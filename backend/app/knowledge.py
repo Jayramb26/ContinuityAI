@@ -23,7 +23,7 @@ def heuristic_extract(text: str):
                 if key not in seen:
                     seen.add(key)
                     # Only capture ownership and dates when explicitly written in the source.
-                    owner_match = re.search(r"\b(?:assigned to|owner\s*[:=]|responsible(?: person)?\s*[:=])\s*([A-Z][A-Za-z .'-]{1,48})", s, re.I)
+                    owner_match = re.search(r"\b(?:assigned to|owner\s*[:=]|responsible(?: person)?\s*[:=])\s*([A-Z][a-z]+(?: [A-Z][a-z]+){0,2})", s, re.I)
                     date_match = re.search(r"\b(?:due|by)\s+(\d{4}-\d{2}-\d{2})\b", s, re.I)
                     priority = "critical" if re.search(r"\b(critical|showstopper)\b", low) else "high" if re.search(r"\b(high priority|urgent|severe)\b", low) else "medium"
                     work_status = "blocked" if re.search(r"\b(blocked|blocker|waiting on)\b", low) else "done" if re.search(r"\b(completed|finished|done)\b", low) else "in_progress" if re.search(r"\b(in progress|currently working)\b", low) else "open"
