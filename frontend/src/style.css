@@ -77,3 +77,22 @@
 .dashboard-open-link{display:flex;box-sizing:border-box;width:100%;min-width:0;min-height:44px;flex:0 0 44px;align-items:center;justify-content:center;gap:8px;padding:10px 14px;white-space:nowrap;overflow:visible;text-align:center;line-height:1.2;font-size:12px}
 .dashboard-open-link svg{flex:0 0 16px;width:16px;height:16px}
 @media(max-width:800px){.dashboard-project-grid{grid-template-columns:minmax(0,1fr)}.dashboard-open-link{min-height:46px;flex-basis:46px}}
+
+
+/* Ownership, work status and activity history */
+.section-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.work-metadata{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:13px}
+.work-metadata label{display:flex;flex-direction:column;gap:5px;color:#84929e;font-size:9px;font-weight:700}
+.work-metadata input,.work-metadata select{width:100%;min-width:0;height:34px;padding:0 8px;border:1px solid #e2e9ed;border-radius:6px;background:#fff;color:#526779;font:10px 'DM Sans',sans-serif}
+.work-metadata input:focus,.work-metadata select:focus{outline:2px solid #d8eee8;border-color:#76b6a8}
+.handover-risk-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:14px 0 20px}
+.handover-risk-summary>div{padding:12px;border:1px solid #edf1f4;border-radius:8px;background:#fafcfd}
+.handover-risk-summary b{display:block;font:800 19px Manrope;color:#30495b}
+.handover-risk-summary span{font-size:9px;color:#8997a3}
+.activity-entry{display:flex;gap:10px;padding:10px 0;border-top:1px solid #eff2f4}
+.activity-dot{width:8px;height:8px;margin:4px 0 0 2px;border-radius:50%;background:#66aa9a;flex:none;box-shadow:0 0 0 3px #eaf5f1}
+.activity-entry>div{min-width:0}
+.activity-entry b{display:block;font-size:10px;line-height:1.5;color:#526779;font-weight:600}
+.activity-entry small{display:block;margin-top:4px;font-size:8px;color:#9ba7b1}
+.activity-add{margin-top:12px}
+@media(max-width:800px){.work-metadata{grid-template-columns:repeat(2,minmax(0,1fr))}.section-actions{justify-content:flex-end}.handover-risk-summary{gap:5px}.handover-risk-summary>div{padding:9px}.handover-risk-summary span{font-size:8px}}
