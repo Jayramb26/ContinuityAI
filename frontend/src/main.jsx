@@ -20,6 +20,7 @@ function App() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [page, setPage] = useState("dashboard");
   const [tab, setTab] = useState("overview");
   const [query, setQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -42,7 +43,7 @@ function App() {
     try {
       const list = await req("/projects");
       setProjects(list);
-      const target = id || list[0]?.id;
+      const target = id;
       if (target) {
         setActive(target);
         const [project, summary] = await Promise.all([
@@ -71,7 +72,7 @@ function App() {
         req("/projects/" + id + "/handover")
       ]);
       setActive(id); setDetail(project); setHandover(summary);
-      setTab("overview"); setMobileNav(false);
+      setPage("project"); setTab("overview"); setMobileNav(false);
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }
   };
@@ -86,6 +87,8 @@ function App() {
       });
       setName(""); setDescription("");
       await refresh(project.id);
+      setPage("project");
+      setTab("overview");
       setNotice("Workspace created successfully.");
     } catch (e) { setError(e.message); }
   };
@@ -162,13 +165,13 @@ function App() {
         </div>
 
         <div className="side-label">WORKSPACE</div>
-        <button type="button" className={"side-link " + (tab === "overview" ? "side-active" : "")} onClick={() => { setTab("overview"); setMobileNav(false); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
+        <button type="button" className={"side-link " + (page === "dashboard" ? "side-active" : "")} onClick={() => { setPage("dashboard"); setMobileNav(false); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
           <LayoutDashboard size={17}/> Dashboard
         </button>
         <div className="workspace-heading"><span>YOUR PROJECTS</span><button onClick={() => document.getElementById("create-workspace")?.scrollIntoView({ behavior: "smooth" })} aria-label="Create workspace"><Plus size={16}/></button></div>
         <div className="project-list">
           {projects.map(project => (
-            <button key={project.id} className={"project-link " + (project.id === active ? "project-current" : "")} onClick={() => select(project.id)}>
+            <button key={project.id} className={"project-link " + (page === "project" && project.id === active ? "project-current" : "")} onClick={() => select(project.id)}>
               <span className="project-dot"/><span className="project-name">{project.name}</span>
             </button>
           ))}
@@ -187,7 +190,7 @@ function App() {
         <header className="topbar">
           <div className="topbar-left">
             <button className="mobile-menu" onClick={() => setMobileNav(true)} aria-label="Open menu"><Menu size={20}/></button>
-            <span className="crumb-muted">CONTINUITYAI</span><span className="crumb-slash">/</span><b>{detail?.name || "Workspace dashboard"}</b>
+            <span className="crumb-muted">CONTINUITYAI</span><span className="crumb-slash">/</span><b>{page === "dashboard" ? "Dashboard" : (detail?.name || "Project workspace")}</b>
           </div>
           <div className="topbar-actions">
             <span className="secure-label"><ShieldCheck size={14}/> Evidence-first workflow</span>
@@ -196,7 +199,7 @@ function App() {
         </header>
 
         <div className="content-wrap">
-          {(!detail || tab === "overview") && (
+          {page === "dashboard" && (
             <section className="create-section" id="create-workspace">
               <div><span className="eyebrow">GET STARTED</span><h2>Create a workspace</h2><p>Start a separate knowledge space for another project or team.</p></div>
               <form onSubmit={create} className="create-form"><input value={name} onChange={e => setName(e.target.value)} placeholder="Project name" aria-label="Project name" required/><input value={description} onChange={e => setDescription(e.target.value)} placeholder="Short project description (optional)" aria-label="Project description"/><button className="primary-button" type="submit" disabled={busy}><Plus size={16}/> Create workspace</button></form>
@@ -206,7 +209,21 @@ function App() {
           {error && <div className="toast toast-error"><AlertTriangle size={16}/><span>{error}</span><button onClick={() => setError("")}>Dismiss</button></div>}
           {notice && <div className="toast toast-success"><CheckCircle2 size={16}/><span>{notice}</span><button onClick={() => setNotice("")}>Dismiss</button></div>}
 
-          {!detail ? (
+          {page === "dashboard" ? (
+            <>
+              <section className="page-intro">
+                <div><div className="eyebrow">YOUR WORKSPACE HUB</div><h1>Dashboard</h1><p>Choose a project to continue, or create a workspace to keep your team knowledge organised.</p></div>
+              </section>
+              <section className="surface-card recent-card">
+                <div className="section-heading"><div><span className="eyebrow">YOUR PROJECTS</span><h2>All workspaces</h2><p className="section-subtitle">{projects.length} workspace{projects.length === 1 ? "" : "s"} available</p></div></div>
+                {projects.length ? <div className="source-grid">{projects.map(project => <article className="source-card" key={project.id}>
+                  <div className="doc-icon"><Layers3 size={20}/></div>
+                  <div><b>{project.name}</b><p>{project.description || "Project knowledge and handover workspace"}</p><small>Workspace #{project.id}</small></div>
+                  <button type="button" className="primary-button" onClick={() => select(project.id)}>Open workspace <ArrowUpRight size={14}/></button>
+                </article>)}</div> : <div className="inline-empty"><Layers3 size={20}/><span>No workspaces yet. Create your first workspace above to get started.</span></div>}
+              </section>
+            </>
+          ) : !detail ? (
             <section className="empty-state">
               <div className="empty-icon"><BrainCircuit size={34}/></div>
               <p className="eyebrow">PROJECT KNOWLEDGE CONTINUITY</p>
