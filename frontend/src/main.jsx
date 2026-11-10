@@ -196,6 +196,11 @@ function App() {
         </header>
 
         <div className="content-wrap">
+          <section className="create-section" id="create-workspace">
+            <div><span className="eyebrow">GET STARTED</span><h2>Create a workspace</h2><p>Start a separate knowledge space for another project or team.</p></div>
+            <form onSubmit={create} className="create-form"><input value={name} onChange={e => setName(e.target.value)} placeholder="Project name" required/><input value={description} onChange={e => setDescription(e.target.value)} placeholder="Short project description (optional)"/><button className="primary-button" type="submit" disabled={busy}><Plus size={16}/> Create workspace</button></form>
+          </section>
+
           {error && <div className="toast toast-error"><AlertTriangle size={16}/><span>{error}</span><button onClick={() => setError("")}>Dismiss</button></div>}
           {notice && <div className="toast toast-success"><CheckCircle2 size={16}/><span>{notice}</span><button onClick={() => setNotice("")}>Dismiss</button></div>}
 
@@ -306,10 +311,7 @@ function App() {
             </>
           )}
 
-          <section className="create-section" id="create-workspace">
-            <div><span className="eyebrow">GET STARTED</span><h2>Create a workspace</h2><p>Start a separate knowledge space for another project or team.</p></div>
-            <form onSubmit={create} className="create-form"><input value={name} onChange={e => setName(e.target.value)} placeholder="Project name" required/><input value={description} onChange={e => setDescription(e.target.value)} placeholder="Short project description (optional)"/><button className="primary-button" type="submit" disabled={busy}><Plus size={16}/> Create workspace</button></form>
-          </section>
+
         </div>
 
         <footer className="app-footer"><span>CONTINUITYAI</span><span>Never let project knowledge leave with a person.</span><a href="https://github.com/Jayramb26/ContinuityAI" target="_blank" rel="noreferrer">Open source repository <ExternalLink size={12}/></a></footer>
