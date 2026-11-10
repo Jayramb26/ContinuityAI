@@ -232,6 +232,7 @@ function App() {
                   <button type="button" className="dashboard-open-link" onClick={() => select(project.id)}>Open workspace <ArrowUpRight size={16}/></button>
                 </article>)}</div> : <div className="dashboard-empty"><div className="empty-icon"><Layers3 size={25}/></div><h3>Your workspace hub is ready</h3><p>Create your first workspace to start collecting project decisions, tasks, risks and source documents.</p><button type="button" className="primary-button" onClick={() => setCreateModalOpen(true)}><Plus size={15}/> Create workspace</button></div>}
               </section>
+            </>
           ) : !detail ? (
             <section className="empty-state">
               <div className="empty-icon"><BrainCircuit size={34}/></div>
