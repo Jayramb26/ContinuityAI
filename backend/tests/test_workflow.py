@@ -24,9 +24,9 @@ def create_project(client):
 
 def test_document_to_reviewed_handover_export(client):
     project_id = create_project(client)
-    source = ("Decision: We decided to use FastAPI for the backend.\\n"
-              "Task: Assigned to Jayram, need to finish API tests by Friday.\\n"
-              "Risk: Database migration may fail during deployment.\\n"
+    source = ("Decision: We decided to use FastAPI for the backend. "
+              "Task: Assigned to Jayram, need to finish API tests by Friday. "
+              "Risk: Database migration may fail during deployment. "
               "Question: Confirm who owns deployment monitoring.")
     upload = client.post(f"/api/projects/{project_id}/upload", files={"file": ("meeting-notes.txt", source.encode(), "text/plain")})
     assert upload.status_code == 200, upload.text
