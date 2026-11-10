@@ -80,7 +80,8 @@ function App() {
   };
 
   const openBrand = async () => {
-    setPage("brand"); setMobileNav(false); await loadBrand();
+    setPage("brand"); setMobileNav(false); setError("");
+    try { await loadBrand(); } catch (e) { setError(e.message); }
   };
 
   const saveBrandGuideline = async (event) => {
