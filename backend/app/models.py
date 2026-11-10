@@ -47,3 +47,26 @@ class KnowledgeItem(Base):
     work_status: Mapped[str] = mapped_column(String(30), default="open")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     project = relationship("Project", back_populates="items")
+
+
+class BrandGuideline(Base):
+    __tablename__ = "brand_guidelines"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(180))
+    kind: Mapped[str] = mapped_column(String(40))
+    content: Mapped[str] = mapped_column(Text)
+    severity: Mapped[str] = mapped_column(String(20), default="warning")
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class BrandReview(Base):
+    __tablename__ = "brand_reviews"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    filename: Mapped[str] = mapped_column(String(255))
+    content: Mapped[str] = mapped_column(Text)
+    findings: Mapped[str] = mapped_column(Text, default="[]")
+    status: Mapped[str] = mapped_column(String(30), default="pending")
+    decision_note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
