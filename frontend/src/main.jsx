@@ -170,7 +170,7 @@ function App() {
         <button type="button" className={"side-link " + (page === "dashboard" ? "side-active" : "")} onClick={() => { setPage("dashboard"); setMobileNav(false); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
           <LayoutDashboard size={17}/> Dashboard
         </button>
-        <div className="workspace-heading"><span>YOUR PROJECTS</span><button type="button" onClick={() => { setCreateModalOpen(true); setMobileNav(false); }} aria-label="Create workspace" title="Create workspace"><Plus size={16}/></button></div>
+        <div className="workspace-heading"><span>YOUR PROJECTS</span><button type="button" className="sidebar-add-workspace" onClick={() => { setCreateModalOpen(true); setMobileNav(false); }} aria-label="Create workspace" title="Create workspace"><Plus size={18}/></button></div>
         <div className="project-list">
           {projects.map(project => (
             <button key={project.id} className={"project-link " + (page === "project" && project.id === active ? "project-current" : "")} onClick={() => select(project.id)}>
@@ -208,18 +208,7 @@ function App() {
             </section>
           )}
 
-          {createModalOpen && (
-            <div className="modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && !busy) setCreateModalOpen(false); }}>
-              <section className="create-modal" role="dialog" aria-modal="true" aria-labelledby="create-modal-title">
-                <div className="create-modal-heading"><div><span className="eyebrow">NEW PROJECT</span><h2 id="create-modal-title">Create workspace</h2><p>Give this project a name and a little context to get started.</p></div><button type="button" className="modal-close" onClick={() => setCreateModalOpen(false)} disabled={busy} aria-label="Close dialog"><X size={18}/></button></div>
-                <form onSubmit={create} className="modal-form">
-                  <label htmlFor="workspace-name">Workspace name <span>*</span></label><input id="workspace-name" value={name} onChange={event => setName(event.target.value)} placeholder="e.g. SmartMeet — Team Workspace" required autoFocus />
-                  <label htmlFor="workspace-description">Description <small>Optional</small></label><textarea id="workspace-description" value={description} onChange={event => setDescription(event.target.value)} placeholder="What is this project about? Add a short summary for your team." rows={4}/>
-                  <div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setCreateModalOpen(false)} disabled={busy}>Cancel</button><button type="submit" className="primary-button" disabled={busy}><Plus size={15}/> Create workspace</button></div>
-                </form>
-              </section>
-            </div>
-          )}
+
 
           {error && <div className="toast toast-error"><AlertTriangle size={16}/><span>{error}</span><button onClick={() => setError("")}>Dismiss</button></div>}
           {notice && <div className="toast toast-success"><CheckCircle2 size={16}/><span>{notice}</span><button onClick={() => setNotice("")}>Dismiss</button></div>}
@@ -228,7 +217,7 @@ function App() {
             <>
               <section className="page-intro dashboard-heading">
                 <div><div className="eyebrow">YOUR WORKSPACE HUB</div><h1>Good to have you back.</h1><p>Keep project knowledge connected, track your workspaces and prepare reliable team handovers.</p></div>
-                <button type="button" className="primary-button" onClick={() => setCreateModalOpen(true)}><Plus size={16}/> New workspace</button>
+                <button type="button" className="primary-button dashboard-create-button" onClick={() => setCreateModalOpen(true)}><Plus size={18}/> Create new workspace</button>
               </section>
               <section className="dashboard-stats">
                 <article className="dashboard-stat"><span className="dashboard-stat-icon"><Layers3 size={18}/></span><div><strong>{projects.length}</strong><b>Total workspaces</b><small>Projects in your knowledge hub</small></div></article>
@@ -240,7 +229,7 @@ function App() {
                 {projects.length ? <div className="dashboard-project-grid">{projects.map(project => <article className="dashboard-project-card" key={project.id}>
                   <div className="dashboard-project-top"><span className="dashboard-project-icon"><Layers3 size={19}/></span><span className="dashboard-project-id">#{project.id}</span></div>
                   <h3>{project.name}</h3><p>{project.description || "Project knowledge and handover workspace."}</p>
-                  <button type="button" className="dashboard-open-link" onClick={() => select(project.id)}>Open workspace <ArrowUpRight size={15}/></button>
+                  <button type="button" className="dashboard-open-link" onClick={() => select(project.id)}>Open workspace <ArrowUpRight size={16}/></button>
                 </article>)}</div> : <div className="dashboard-empty"><div className="empty-icon"><Layers3 size={25}/></div><h3>Your workspace hub is ready</h3><p>Create your first workspace to start collecting project decisions, tasks, risks and source documents.</p><button type="button" className="primary-button" onClick={() => setCreateModalOpen(true)}><Plus size={15}/> Create workspace</button></div>}
               </section>
           ) : !detail ? (
@@ -355,6 +344,19 @@ function App() {
 
         <footer className="app-footer"><span>CONTINUITYAI</span><span>Never let project knowledge leave with a person.</span><a href="https://github.com/Jayramb26/ContinuityAI" target="_blank" rel="noreferrer">Open source repository <ExternalLink size={12}/></a></footer>
       </main>
+
+      {createModalOpen && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && !busy) setCreateModalOpen(false); }}>
+          <section className="create-modal" role="dialog" aria-modal="true" aria-labelledby="create-modal-title">
+            <div className="create-modal-heading"><div><span className="eyebrow">NEW PROJECT</span><h2 id="create-modal-title">Create workspace</h2><p>Give this project a name and a little context to get started.</p></div><button type="button" className="modal-close" onClick={() => setCreateModalOpen(false)} disabled={busy} aria-label="Close dialog"><X size={18}/></button></div>
+            <form onSubmit={create} className="modal-form">
+              <label htmlFor="workspace-name">Workspace name <span>*</span></label><input id="workspace-name" value={name} onChange={event => setName(event.target.value)} placeholder="e.g. SmartMeet — Team Workspace" required autoFocus />
+              <label htmlFor="workspace-description">Description <small>Optional</small></label><textarea id="workspace-description" value={description} onChange={event => setDescription(event.target.value)} placeholder="What is this project about? Add a short summary for your team." rows={4}/>
+              <div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setCreateModalOpen(false)} disabled={busy}>Cancel</button><button type="submit" className="primary-button" disabled={busy}><Plus size={15}/> Create workspace</button></div>
+            </form>
+          </section>
+        </div>
+      )}
       {busy && <div className="busy-indicator"><span className="spinner"/> Updating workspace…</div>}
     </div>
   );
