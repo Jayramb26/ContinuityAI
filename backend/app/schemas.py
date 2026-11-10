@@ -34,3 +34,15 @@ class KnowledgeCreate(BaseModel):
 class ActivityCreate(BaseModel):
     message: str
     event_type: str = "update"
+
+
+class BrandGuidelineCreate(BaseModel):
+    name: str
+    kind: str
+    content: str
+    severity: str = "warning"
+
+
+class BrandDecision(BaseModel):
+    status: str
+    decision_note: str = ""
