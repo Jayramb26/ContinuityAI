@@ -123,7 +123,29 @@ function App() {
     } catch (e) { setError(e.message); }
   };
 
-  const updateWork = async (item, patch) => {\n    try {\n      await req("/items/" + item.id, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...item, ...patch }) });\n      await select(active);\n      setNotice("Ownership and work status updated.");\n    } catch (e) { setError(e.message); }\n  };\n\n  const addWorkItem = async () => {\n    const category = window.prompt("Type: decision, task, risk or question", "task");\n    if (!category) return;\n    const title = window.prompt("What needs to be remembered?", "");\n    if (!title) return;\n    const detail = window.prompt("Add context or next action", "") ?? "";\n    const owner = window.prompt("Who owns this? Leave blank if unknown", "") ?? "";\n    const due_date = category.toLowerCase() === "task" ? (window.prompt("Due date (YYYY-MM-DD, optional)", "") ?? "") : "";\n    try {\n      await req("/projects/" + active + "/items", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ category: category.toLowerCase(), title, detail, owner, due_date, priority: "medium", work_status: "open" }) });\n      await select(active); setTab("knowledge"); setNotice("Work item added to project knowledge.");\n    } catch (e) { setError(e.message); }\n  };\n\n  const edit = async (item) => {
+  const updateWork = async (item, patch) => {
+    try {
+      await req("/items/" + item.id, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...item, ...patch }) });
+      await select(active);
+      setNotice("Ownership and work status updated.");
+    } catch (e) { setError(e.message); }
+  };
+
+  const addWorkItem = async () => {
+    const category = window.prompt("Type: decision, task, risk or question", "task");
+    if (!category) return;
+    const title = window.prompt("What needs to be remembered?", "");
+    if (!title) return;
+    const detail = window.prompt("Add context or next action", "") ?? "";
+    const owner = window.prompt("Who owns this? Leave blank if unknown", "") ?? "";
+    const due_date = category.toLowerCase() === "task" ? (window.prompt("Due date (YYYY-MM-DD, optional)", "") ?? "") : "";
+    try {
+      await req("/projects/" + active + "/items", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ category: category.toLowerCase(), title, detail, owner, due_date, priority: "medium", work_status: "open" }) });
+      await select(active); setTab("knowledge"); setNotice("Work item added to project knowledge.");
+    } catch (e) { setError(e.message); }
+  };
+
+  const edit = async (item) => {
     const title = window.prompt("Edit title", item.title);
     if (title === null) return;
     const detailText = window.prompt("Edit detail", item.detail);
