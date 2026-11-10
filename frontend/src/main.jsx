@@ -118,7 +118,7 @@ function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...item, status, verified: status === "approved" })
       });
-      await select(active);
+      await select(active); setTab("knowledge");
       setNotice(status === "approved" ? "Item approved and verified." : "Review decision saved.");
     } catch (e) { setError(e.message); }
   };
@@ -126,7 +126,7 @@ function App() {
   const updateWork = async (item, patch) => {
     try {
       await req("/items/" + item.id, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...item, ...patch }) });
-      await select(active);
+      await select(active); setTab("knowledge");
       setNotice("Ownership and work status updated.");
     } catch (e) { setError(e.message); }
   };
@@ -156,7 +156,7 @@ function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...item, title, detail: detailText })
       });
-      await select(active);
+      await select(active); setTab("knowledge");
       setNotice("Knowledge item updated.");
     } catch (e) { setError(e.message); }
   };
