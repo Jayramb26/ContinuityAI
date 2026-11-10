@@ -96,3 +96,51 @@
 .activity-entry small{display:block;margin-top:4px;font-size:8px;color:#9ba7b1}
 .activity-add{margin-top:12px}
 @media(max-width:800px){.work-metadata{grid-template-columns:repeat(2,minmax(0,1fr))}.section-actions{justify-content:flex-end}.handover-risk-summary{gap:5px}.handover-risk-summary>div{padding:9px}.handover-risk-summary span{font-size:8px}}
+
+
+/* Brand governance workflow */
+.brand-governance-page{display:flex;flex-direction:column;gap:18px}
+.brand-workflow-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.brand-workflow-steps>div{padding:14px 16px;border:1px solid #e6edf0;border-radius:10px;background:#fff}
+.brand-workflow-steps b{display:block;color:#315b57;font:800 11px Manrope,sans-serif}
+.brand-workflow-steps span{display:block;margin-top:5px;color:#8795a2;font-size:10px}
+.brand-grid{display:grid;grid-template-columns:minmax(290px,.85fr) minmax(0,1.4fr);gap:16px;align-items:start}
+.brand-guideline-panel,.brand-review-panel{min-width:0}
+.brand-rule-form{display:flex;flex-direction:column;gap:11px;padding:15px;border:1px solid #e8eef0;border-radius:9px;background:#fafcfc;margin-bottom:14px}
+.brand-rule-form label,.brand-human-decision label{display:flex;flex-direction:column;gap:6px;color:#526779;font-size:10px;font-weight:700}
+.brand-rule-form input,.brand-rule-form select,.brand-rule-form textarea,.brand-human-decision textarea{width:100%;min-width:0;border:1px solid #dfe7eb;border-radius:7px;padding:9px 10px;background:#fff;color:#354c5e;font:11px 'DM Sans',sans-serif;outline:none}
+.brand-rule-form textarea,.brand-human-decision textarea{resize:vertical;line-height:1.5}
+.brand-form-row{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.brand-guideline-list{display:flex;flex-direction:column;gap:8px}
+.brand-guideline{display:flex;justify-content:space-between;gap:10px;padding:12px;border:1px solid #edf1f4;border-radius:8px}
+.brand-guideline>div{min-width:0}
+.brand-guideline b{display:block;margin-top:7px;color:#344c5d;font-size:11px}
+.brand-guideline p{margin:5px 0;color:#718291;font-size:10px;line-height:1.5;overflow-wrap:anywhere}
+.brand-guideline small{color:#9aa6b1;font-size:9px}
+.brand-kind,.brand-finding>div span{display:inline-flex;padding:4px 7px;border-radius:5px;background:#eef4f4;color:#54736f;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+.brand-review-card{padding:15px 0;border-top:1px solid #edf1f4}
+.brand-review-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.brand-review-head h3{margin:0;color:#30495b;font:700 13px Manrope,sans-serif;overflow-wrap:anywhere}
+.brand-review-head small{display:block;margin-top:5px;color:#9aa6b1;font-size:9px}
+.brand-review-summary{display:flex;gap:8px;margin:12px 0}
+.brand-review-summary span{padding:7px 10px;border-radius:6px;background:#f5f8f9;color:#82919d;font-size:9px}
+.brand-review-summary b{color:#30495b;font-size:12px}
+.brand-finding{padding:11px;margin:8px 0;border:1px solid #e8edf0;border-left:3px solid #d5a45c;border-radius:7px;background:#fff}
+.brand-finding.severity-critical{border-left-color:#c95e5e;background:#fffafa}
+.brand-finding.severity-info{border-left-color:#75a6b5}
+.brand-finding>div{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.brand-finding>div span{background:#fff0dc;color:#a56c24}
+.brand-finding.severity-critical>div span{background:#fde8e8;color:#b64c4c}
+.brand-finding b{color:#42596b;font-size:10px}
+.brand-finding p{margin:7px 0;color:#718291;font-size:10px;line-height:1.5}
+.brand-finding small{color:#8997a3;font-size:9px;line-height:1.5}
+.brand-clean-result{display:flex;align-items:center;gap:8px;padding:12px;border-radius:7px;background:#eff8f3;color:#4d826e;font-size:10px}
+.brand-content-preview{margin-top:10px;color:#687c8b;font-size:10px}
+.brand-content-preview summary{cursor:pointer;font-weight:700}
+.brand-content-preview pre{max-height:190px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;padding:10px;background:#f7f9fa;border-radius:7px;color:#617382;font:10px/1.5 'DM Sans',sans-serif}
+.brand-human-decision{margin-top:13px;padding-top:12px;border-top:1px solid #edf1f4}
+.brand-human-decision>div{display:flex;gap:7px;flex-wrap:wrap;margin-top:9px}
+.brand-decision-note{padding:10px;border-radius:7px;background:#f5f8f9;color:#667a89;font-size:10px}
+.brand-disclaimer{margin:0;color:#8795a2;font-size:9px;line-height:1.6}
+@media(max-width:1050px){.brand-grid{grid-template-columns:1fr}}
+@media(max-width:650px){.brand-workflow-steps{grid-template-columns:1fr}.brand-form-row{grid-template-columns:1fr}.brand-review-head{flex-direction:column}}
