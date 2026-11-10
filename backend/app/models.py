@@ -21,6 +21,15 @@ class SourceDocument(Base):
     uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     project = relationship("Project", back_populates="documents")
 
+class ActivityEvent(Base):
+    __tablename__ = "activity_events"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"))
+    item_id: Mapped[int | None] = mapped_column(ForeignKey("knowledge_items.id"), nullable=True)
+    event_type: Mapped[str] = mapped_column(String(50))
+    message: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+
 class KnowledgeItem(Base):
     __tablename__ = "knowledge_items"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -32,5 +41,9 @@ class KnowledgeItem(Base):
     evidence: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String(30), default="needs_review")
     verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    owner: Mapped[str] = mapped_column(String(180), default="")
+    due_date: Mapped[str] = mapped_column(String(20), default="")
+    priority: Mapped[str] = mapped_column(String(20), default="medium")
+    work_status: Mapped[str] = mapped_column(String(30), default="open")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     project = relationship("Project", back_populates="items")
