@@ -39,7 +39,7 @@ async def ai_extract(text: str):
     base, key, model = os.getenv("LLM_BASE_URL"), os.getenv("LLM_API_KEY"), os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
     if not base or not key:
         return None
-    prompt = "Extract candidate project decisions, tasks, risks, and unresolved questions. Return ONLY JSON array. Each item must have category, title, detail, evidence. Evidence must be a verbatim substring of source. Do not infer missing facts. Source:\n" + text[:18000]
+    prompt = "Extract candidate project decisions, tasks, risks, and unresolved questions. Return ONLY JSON array. Each item must have category, title, detail, evidence, owner, due_date, priority and work_status. Evidence must be a verbatim substring of source. Only populate owner and due_date when explicitly stated in evidence; otherwise use empty strings. priority must be low, medium, high or critical; work_status must be open, in_progress, blocked or done. Do not infer missing facts. Source:\\n" + text[:18000]
     async with httpx.AsyncClient(timeout=60) as client:
         response = await client.post(base.rstrip("/") + "/chat/completions", headers={"Authorization": f"Bearer {key}"},
             json={"model": model, "temperature": 0.1, "messages": [{"role": "user", "content": prompt}]})
