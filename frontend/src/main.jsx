@@ -162,7 +162,7 @@ function App() {
         </div>
 
         <div className="side-label">WORKSPACE</div>
-        <button className={"side-link " + (tab === "overview" ? "side-active" : "")} onClick={() => { setTab("overview"); setMobileNav(false); }}>
+        <button type="button" className={"side-link " + (tab === "overview" ? "side-active" : "")} onClick={() => { setTab("overview"); setMobileNav(false); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
           <LayoutDashboard size={17}/> Dashboard
         </button>
         <div className="workspace-heading"><span>YOUR PROJECTS</span><button onClick={() => document.getElementById("create-workspace")?.scrollIntoView({ behavior: "smooth" })} aria-label="Create workspace"><Plus size={16}/></button></div>
