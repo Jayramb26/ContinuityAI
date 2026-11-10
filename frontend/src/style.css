@@ -3,3 +3,48 @@
 @media(max-width:1100px){.app-shell{grid-template-columns:225px minmax(0,1fr)}.content-wrap{padding:27px 24px}.topbar{padding:0 24px}.metric-grid{gap:9px}.metric-card{padding:14px}.create-section{align-items:flex-start;flex-direction:column}.create-form{width:100%}.create-form input{flex:1;max-width:none}}
 @media(max-width:800px){.app-shell{display:block}.sidebar{position:fixed;left:0;top:0;width:270px;transform:translateX(-105%);transition:transform .2s ease;box-shadow:10px 0 35px #0b172733}.sidebar-open{transform:translateX(0)}.mobile-close{display:block}.mobile-backdrop{display:block;position:fixed;inset:0;background:#0c1b2a77;border:0;z-index:15}.mobile-menu{display:grid;place-items:center;width:32px;height:32px;border:1px solid #e6ebef;background:#fff;color:#607587;border-radius:7px}.topbar{height:58px;padding:0 14px}.topbar-left{gap:8px}.crumb-muted{display:none}.secure-label{display:none}.content-wrap{padding:23px 14px}.page-intro{align-items:flex-start;flex-direction:column}.page-intro h1{font-size:25px}.intro-actions{width:100%}.intro-actions>*{flex:1}.metric-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.metric-card{min-height:128px}.overview-grid,.handover-layout{grid-template-columns:1fr}.readiness-content{gap:15px}.readiness-ring{width:100px;height:100px}.filter-row{flex-wrap:wrap}.search-box{flex-basis:100%}.filter-row select{flex:1;min-width:0;height:36px}.knowledge-item{display:block}.item-actions{max-width:none;margin-top:12px}.source-grid{grid-template-columns:1fr}.section-heading{align-items:flex-start}.create-section{padding:16px}.create-form{display:grid;grid-template-columns:1fr}.create-form input{max-width:none;width:100%;height:38px}.app-footer{padding:15px;flex-wrap:wrap;gap:8px}.app-footer a{margin-left:0;width:100%}.empty-state{margin:8vh auto;padding:15px}.empty-state h1{font-size:32px}.doc-date{display:none}}
 @media(max-width:420px){.metric-card{padding:12px}.metric-value{font-size:22px}.metric-foot{font-size:8px}.tab-bar{gap:17px}.tab-bar button{font-size:10px}.surface-card{padding:15px}.readiness-content{align-items:flex-start;flex-direction:column}.readiness-copy{width:100%}.handover-score{gap:10px}.handover-score>div:first-child{min-width:84px}}
+
+
+/* Dashboard layout */
+.dashboard-heading{align-items:center;margin-bottom:20px}.dashboard-heading .primary-button{flex:none}
+.dashboard-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px;margin:0 0 20px}
+.dashboard-stat{display:flex;align-items:center;gap:13px;padding:17px 18px;background:#fff;border:1px solid #e7edf1;border-radius:10px;box-shadow:0 3px 12px #1c344008}
+.dashboard-stat-icon{width:39px;height:39px;display:grid;place-items:center;flex:none;border-radius:10px;background:#edf6f3;color:#438f82}
+.dashboard-stat strong{display:block;font:800 19px Manrope;color:#20394b;line-height:1.2;margin-bottom:3px}
+.dashboard-stat b{display:block;font-size:10px;color:#526779}
+.dashboard-stat small{display:block;font-size:9px;color:#9aa6b2;margin-top:4px}
+.dashboard-workspaces{padding:21px}
+.dashboard-project-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.dashboard-project-card{padding:16px;border:1px solid #e9eef1;border-radius:9px;background:linear-gradient(145deg,#fff,#fbfdfd);transition:border-color .18s,transform .18s,box-shadow .18s}
+.dashboard-project-card:hover{border-color:#b8d7d0;transform:translateY(-2px);box-shadow:0 8px 20px #1c34400c}
+.dashboard-project-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:13px}
+.dashboard-project-icon{width:35px;height:35px;display:grid;place-items:center;background:#edf6f3;color:#438f82;border-radius:9px}
+.dashboard-project-id{font-size:9px;color:#a0acb6;font-weight:700}
+.dashboard-project-card h3{font:700 13px Manrope;color:#2b4355;margin:0 0 6px;overflow-wrap:anywhere}
+.dashboard-project-card p{font-size:10px;line-height:1.6;color:#8795a1;min-height:32px;margin:0 0 13px}
+.dashboard-open-link{display:inline-flex;align-items:center;gap:6px;border:0;background:none;padding:0;color:#398b7e;font-size:10px;font-weight:700}
+.dashboard-open-link:hover{color:#205f57}
+.dashboard-empty{text-align:center;padding:30px 15px 25px;background:#fafcfd;border:1px dashed #dfe8eb;border-radius:9px}
+.dashboard-empty .empty-icon{width:52px;height:52px;margin:0 auto 12px;border-radius:15px}
+.dashboard-empty h3{font:700 14px Manrope;color:#30495b;margin:0 0 6px}
+.dashboard-empty p{max-width:430px;margin:0 auto 15px;font-size:10px;line-height:1.6;color:#8997a3}
+.modal-backdrop{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:18px;background:#0b1b2bb8;backdrop-filter:blur(3px)}
+.create-modal{width:min(100%,470px);background:#fff;border:1px solid #e7edf1;border-radius:14px;padding:24px;box-shadow:0 24px 80px #07152355;animation:modal-in .18s ease-out}
+@keyframes modal-in{from{opacity:0;transform:translateY(8px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}
+.create-modal-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:15px;padding-bottom:18px;border-bottom:1px solid #edf1f3}
+.create-modal-heading h2{font:800 20px Manrope;color:#203549;margin:6px 0 5px}
+.create-modal-heading p{font-size:10px;line-height:1.5;color:#8795a2;margin:0}
+.modal-close{width:32px;height:32px;display:grid;place-items:center;border:1px solid #e6ecef;border-radius:8px;background:#fff;color:#718292;flex:none}
+.modal-close:hover{background:#f5f8f9;color:#344f60}
+.modal-form{display:flex;flex-direction:column;padding-top:18px}
+.modal-form label{font-size:10px;font-weight:700;color:#42596b;margin:0 0 7px}
+.modal-form label span{color:#d16b5e}
+.modal-form label small{font-weight:400;color:#9aa6b1;margin-left:5px}
+.modal-form input,.modal-form textarea{width:100%;border:1px solid #dfe7eb;border-radius:7px;padding:10px 11px;font:10px 'DM Sans',sans-serif;color:#354c5e;outline:none;margin-bottom:15px;resize:vertical}
+.modal-form input{height:39px}
+.modal-form textarea{line-height:1.55;min-height:90px}
+.modal-form input:focus,.modal-form textarea:focus{border-color:#6aafa1;box-shadow:0 0 0 3px #6aafa11c}
+.modal-form input::placeholder,.modal-form textarea::placeholder{color:#aab4bd}
+.modal-actions{display:flex;justify-content:flex-end;gap:8px;padding-top:4px}
+.modal-actions button{min-width:100px}
+@media(max-width:800px){.dashboard-heading{align-items:flex-start}.dashboard-heading .primary-button{width:100%}.dashboard-stats{grid-template-columns:1fr;gap:8px}.dashboard-stat{padding:13px 15px}.dashboard-project-grid{grid-template-columns:1fr}.create-modal{padding:19px}}
