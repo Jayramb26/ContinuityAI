@@ -36,6 +36,7 @@ def test_document_to_reviewed_handover_export(client):
     project = client.get(f"/api/projects/{project_id}").json()
     assert len(project["documents"]) == 1
     assert len(project["items"]) >= 3
+    assert any(item["owner"] == "Jayram" for item in project["items"])
     first = project["items"][0]
     assert first["evidence"] in source
     assert first["status"] == "needs_review"
