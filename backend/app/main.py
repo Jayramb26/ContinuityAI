@@ -157,7 +157,8 @@ def decide_brand_review(review_id: int, payload: BrandDecision, db: Session = De
     db.commit(); db.refresh(review)
     return review_dict(review)
 
-\n@app.get("/api/health")
+
+@app.get("/api/health")
 def health():
     return {"status": "ok", "app": "ContinuityAI", "version": "0.2.0"}
 
