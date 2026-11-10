@@ -26,7 +26,7 @@ with engine.begin() as conn:
         if name not in existing:
             conn.execute(text(f"ALTER TABLE knowledge_items ADD COLUMN {name} {sql_type} NOT NULL DEFAULT {default}"))
 
-app = FastAPI(title="ContinuityAI API", version="0.2.0", description="Evidence-linked project knowledge continuity and handover")
+app = FastAPI(title="ContinuityAI API", version="0.3.0", description="Knowledge handover and human-reviewed brand governance")
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 allowed_origins = [x.strip() for x in os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173,https://continuityai-web.onrender.com").split(",") if x.strip()]
 app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
