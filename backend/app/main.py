@@ -224,5 +224,5 @@ def handover_markdown(project_id: int, db: Session = Depends(get_db)):
     lines += ["", "## Recent project activity"]
     for x in data["activity"][:20]: lines.append(f"- {x['created_at']}: {x['message']}")
     lines += ["", "## Recommended next actions"] + [f"- {x}" for x in data["next_steps"]]
-    return Response(content="\\n".join(lines), media_type="text/markdown; charset=utf-8",
+    return Response(content="\n".join(lines), media_type="text/markdown; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="continuityai-handover-{project_id}.md"'})
