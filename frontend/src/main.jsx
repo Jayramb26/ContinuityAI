@@ -170,7 +170,7 @@ function App() {
         <button type="button" className={"side-link " + (page === "dashboard" ? "side-active" : "")} onClick={() => { setPage("dashboard"); setMobileNav(false); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
           <LayoutDashboard size={17}/> Dashboard
         </button>
-        <div className="workspace-heading"><span>YOUR PROJECTS</span><button type="button" className="sidebar-add-workspace" onClick={() => { setCreateModalOpen(true); setMobileNav(false); }} aria-label="Create workspace" title="Create workspace"><Plus size={18}/></button></div>
+        <div className="workspace-heading" onClick={() => { setError(""); setCreateModalOpen(true); setMobileNav(false); }}><span>YOUR PROJECTS</span><button type="button" className="sidebar-add-workspace" onClick={event => { event.preventDefault(); event.stopPropagation(); setError(""); setCreateModalOpen(true); setMobileNav(false); }} aria-label="Create workspace" aria-haspopup="dialog" aria-expanded={createModalOpen} title="Create workspace"><Plus size={18}/></button></div>
         <div className="project-list">
           {projects.map(project => (
             <button key={project.id} className={"project-link " + (page === "project" && project.id === active ? "project-current" : "")} onClick={() => select(project.id)}>
