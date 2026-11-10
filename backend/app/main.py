@@ -7,8 +7,8 @@ from fastapi.responses import Response
 from sqlalchemy import select, text, inspect
 from sqlalchemy.orm import Session
 from .database import Base, engine, get_db
-from .models import Project, SourceDocument, KnowledgeItem, ActivityEvent
-from .schemas import ProjectCreate, ReviewUpdate, KnowledgeCreate, ActivityCreate
+from .models import Project, SourceDocument, KnowledgeItem, ActivityEvent, BrandGuideline, BrandReview
+from .schemas import ProjectCreate, ReviewUpdate, KnowledgeCreate, ActivityCreate, BrandGuidelineCreate, BrandDecision
 from .ingestion import extract_text, chunks
 from .knowledge import heuristic_extract, ai_extract
 
@@ -31,7 +31,133 @@ MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 allowed_origins = [x.strip() for x in os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173,https://continuityai-web.onrender.com").split(",") if x.strip()]
 app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
-@app.get("/api/health")
+
+
+# Brand governance: explicit rules, explainable findings, human-owned decisions.
+BRAND_KINDS = {"required_term", "prohibited_term", "approved_fact", "approved_asset", "tone_rule"}
+BRAND_SEVERITIES = {"info", "warning", "critical"}
+
+def guideline_dict(g):
+    return {"id": g.id, "name": g.name, "kind": g.kind, "content": g.content,
+            "severity": g.severity, "active": g.active, "created_at": g.created_at.isoformat()}
+
+def review_dict(r):
+    import json
+    findings = json.loads(r.findings or "[]")
+    return {"id": r.id, "filename": r.filename, "content": r.content,
+            "findings": findings, "status": r.status, "decision_note": r.decision_note,
+            "created_at": r.created_at.isoformat(),
+            "decided_at": r.decided_at.isoformat() if r.decided_at else None,
+            "finding_count": len(findings),
+            "critical_count": sum(1 for f in findings if f.get("severity") == "critical")}
+
+def evaluate_brand_content(content, guidelines):
+    findings = []
+    lowered = content.casefold()
+    for rule in guidelines:
+        phrase = rule.content.strip()
+        if not phrase:
+            continue
+        present = phrase.casefold() in lowered
+        if rule.kind == "required_term" and not present:
+            findings.append({"guideline_id": rule.id, "guideline": rule.name, "kind": rule.kind,
+                "severity": rule.severity, "issue": f"Required term is missing: “{phrase}”.",
+                "explanation": f"The approved wording “{phrase}” does not appear in this content.",
+                "recommendation": f"Include the approved term “{phrase}” where contextually appropriate."})
+        elif rule.kind == "prohibited_term" and present:
+            findings.append({"guideline_id": rule.id, "guideline": rule.name, "kind": rule.kind,
+                "severity": rule.severity, "issue": f"Prohibited wording found: “{phrase}”.",
+                "explanation": f"The content contains wording that the guideline explicitly prohibits.",
+                "recommendation": f"Remove or replace “{phrase}” with approved wording."})
+        elif rule.kind == "approved_fact" and not present:
+            findings.append({"guideline_id": rule.id, "guideline": rule.name, "kind": rule.kind,
+                "severity": rule.severity, "issue": f"Approved fact not verified: “{phrase}”.",
+                "explanation": "The supplied approved fact could not be matched exactly. This may be an omission or a wording variation, not proof that the content is false.",
+                "recommendation": "Verify the fact with an authoritative source and use the approved wording if applicable."})
+        elif rule.kind == "approved_asset" and not present:
+            findings.append({"guideline_id": rule.id, "guideline": rule.name, "kind": rule.kind,
+                "severity": rule.severity, "issue": f"Approved asset reference missing: “{phrase}”.",
+                "explanation": "The configured approved asset name, URL or identifier was not found in the submitted text.",
+                "recommendation": "Confirm the correct approved asset is used and referenced in the final content."})
+        elif rule.kind == "tone_rule":
+            # Tone rules are surfaced to a human reviewer; free-form style cannot be reliably proven by keyword matching.
+            findings.append({"guideline_id": rule.id, "guideline": rule.name, "kind": rule.kind,
+                "severity": rule.severity, "issue": "Human tone review required.",
+                "explanation": f"Guideline: {phrase}. Automated checks cannot reliably judge brand voice from this rule alone.",
+                "recommendation": "Read the content against this tone guidance and record the human decision."})
+    # Common absolute claims are flagged for fact-checking, never auto-rejected.
+    for term in ["guaranteed", "100% safe", "number one", "best in the world", "risk-free"]:
+        if term in lowered:
+            findings.append({"guideline_id": None, "guideline": "Claims requiring substantiation", "kind": "claim_check",
+                "severity": "warning", "issue": f"Potentially unsubstantiated claim: “{term}”.",
+                "explanation": "Absolute or comparative claims may require legal or evidence review.",
+                "recommendation": "Attach substantiation or soften the claim before publication."})
+    return findings
+
+@app.get("/api/brand/guidelines")
+def list_brand_guidelines(db: Session = Depends(get_db)):
+    rows = db.scalars(select(BrandGuideline).order_by(BrandGuideline.created_at.desc())).all()
+    return [guideline_dict(x) for x in rows]
+
+@app.post("/api/brand/guidelines")
+def create_brand_guideline(payload: BrandGuidelineCreate, db: Session = Depends(get_db)):
+    if payload.kind not in BRAND_KINDS:
+        raise HTTPException(400, "Choose a supported guideline type")
+    if payload.severity not in BRAND_SEVERITIES:
+        raise HTTPException(400, "Severity must be info, warning or critical")
+    if not payload.name.strip() or not payload.content.strip():
+        raise HTTPException(400, "Guideline name and approved rule content are required")
+    row = BrandGuideline(name=payload.name.strip(), kind=payload.kind, content=payload.content.strip(), severity=payload.severity)
+    db.add(row); db.commit(); db.refresh(row)
+    return guideline_dict(row)
+
+@app.delete("/api/brand/guidelines/{guideline_id}")
+def delete_brand_guideline(guideline_id: int, db: Session = Depends(get_db)):
+    row = db.get(BrandGuideline, guideline_id)
+    if not row:
+        raise HTTPException(404, "Guideline not found")
+    db.delete(row); db.commit()
+    return {"deleted": guideline_id}
+
+@app.get("/api/brand/reviews")
+def list_brand_reviews(db: Session = Depends(get_db)):
+    rows = db.scalars(select(BrandReview).order_by(BrandReview.created_at.desc())).all()
+    return [review_dict(x) for x in rows]
+
+@app.post("/api/brand/reviews")
+async def submit_brand_content(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    filename = Path(file.filename or "brand-content.txt").name
+    raw = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(raw) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, "File is too large. Maximum upload size is 10 MB.")
+    try:
+        content = extract_text(filename, raw)
+    except Exception as e:
+        raise HTTPException(400, f"Could not read content: {e}")
+    if not content.strip():
+        raise HTTPException(400, "No readable text found in the submitted content")
+    rules = db.scalars(select(BrandGuideline).where(BrandGuideline.active == True)).all()
+    findings = evaluate_brand_content(content, rules)
+    import json
+    review = BrandReview(filename=filename, content=content, findings=json.dumps(findings, ensure_ascii=False),
+                         status="pending")
+    db.add(review); db.commit(); db.refresh(review)
+    return review_dict(review)
+
+@app.patch("/api/brand/reviews/{review_id}")
+def decide_brand_review(review_id: int, payload: BrandDecision, db: Session = Depends(get_db)):
+    review = db.get(BrandReview, review_id)
+    if not review:
+        raise HTTPException(404, "Brand review not found")
+    if payload.status not in {"approved", "rejected", "changes_requested"}:
+        raise HTTPException(400, "Decision must be approved, rejected or changes_requested")
+    review.status = payload.status
+    review.decision_note = payload.decision_note.strip()[:2000]
+    review.decided_at = datetime.now(timezone.utc)
+    db.commit(); db.refresh(review)
+    return review_dict(review)
+
+\n@app.get("/api/health")
 def health():
     return {"status": "ok", "app": "ContinuityAI", "version": "0.2.0"}
 
