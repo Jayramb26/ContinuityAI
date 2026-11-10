@@ -105,3 +105,24 @@ def test_owner_tracking_activity_and_handover_details(client):
     assert "Mira" in exported.text
     assert "Unfinished work and ownership" in exported.text
     assert "Recent project activity" in exported.text
+
+
+def test_brand_governance_rule_check_and_human_decision(client):
+    required = client.post("/api/brand/guidelines", json={"name": "Required product name", "kind": "required_term", "content": "ContinuityAI", "severity": "critical"})
+    assert required.status_code == 200, required.text
+    prohibited = client.post("/api/brand/guidelines", json={"name": "No unsupported superlatives", "kind": "prohibited_term", "content": "best in the world", "severity": "warning"})
+    assert prohibited.status_code == 200, prohibited.text
+    fact = client.post("/api/brand/guidelines", json={"name": "Approved founding fact", "kind": "approved_fact", "content": "Founded in 2024", "severity": "warning"})
+    assert fact.status_code == 200, fact.text
+    upload = client.post("/api/brand/reviews", files={"file": ("campaign.txt", b"Our product is the best in the world.", "text/plain")})
+    assert upload.status_code == 200, upload.text
+    review = upload.json()
+    assert review["status"] == "pending"
+    assert review["finding_count"] >= 3
+    assert any("Required term is missing" in f["issue"] for f in review["findings"])
+    assert any("Prohibited wording found" in f["issue"] for f in review["findings"])
+    assert any("Approved fact not verified" in f["issue"] for f in review["findings"])
+    decision = client.patch(f"/api/brand/reviews/{review['id']}", json={"status": "changes_requested", "decision_note": "Add approved product name and verify the founding claim."})
+    assert decision.status_code == 200, decision.text
+    assert decision.json()["status"] == "changes_requested"
+    assert "verify the founding claim" in decision.json()["decision_note"]
