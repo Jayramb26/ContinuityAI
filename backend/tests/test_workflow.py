@@ -59,3 +59,48 @@ def test_rejects_unsupported_file_type(client):
 
 def test_project_not_found(client):
     assert client.get("/api/projects/999999").status_code == 404
+
+
+def test_owner_tracking_activity_and_handover_details(client):
+    project_id = create_project(client)
+    created = client.post(f"/api/projects/{project_id}/items", json={
+        "category": "task", "title": "Finish deployment checklist",
+        "detail": "Verify API health and frontend access",
+        "owner": "Aarav", "due_date": "2026-11-20",
+        "priority": "high", "work_status": "blocked"
+    })
+    assert created.status_code == 200, created.text
+    item = created.json()
+    assert item["owner"] == "Aarav"
+    assert item["work_status"] == "blocked"
+    assert item["priority"] == "high"
+
+    update = client.patch(f"/api/items/{item['id']}", json={
+        "title": item["title"], "detail": item["detail"],
+        "status": "approved", "verified": True,
+        "owner": "Mira", "work_status": "in_progress",
+        "priority": "critical", "due_date": "2026-11-21"
+    })
+    assert update.status_code == 200, update.text
+    assert update.json()["owner"] == "Mira"
+    assert update.json()["work_status"] == "in_progress"
+
+    activity = client.post(f"/api/projects/{project_id}/activity", json={
+        "message": "Handover sync: deployment ownership transferred to Mira",
+        "event_type": "team_update"
+    })
+    assert activity.status_code == 200
+
+    project = client.get(f"/api/projects/{project_id}").json()
+    assert any("deployment ownership transferred" in e["message"] for e in project["activity"])
+    handover = client.get(f"/api/projects/{project_id}/handover").json()
+    assert len(handover["tasks"]) == 1
+    assert handover["tasks"][0]["owner"] == "Mira"
+    assert handover["tasks"][0]["work_status"] == "in_progress"
+    assert len(handover["blocked_items"]) == 0
+
+    exported = client.get(f"/api/projects/{project_id}/handover.md")
+    assert exported.status_code == 200
+    assert "Mira" in exported.text
+    assert "Unfinished work and ownership" in exported.text
+    assert "Recent project activity" in exported.text
