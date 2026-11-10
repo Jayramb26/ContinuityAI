@@ -48,3 +48,21 @@
 .modal-actions{display:flex;justify-content:flex-end;gap:8px;padding-top:4px}
 .modal-actions button{min-width:100px}
 @media(max-width:800px){.dashboard-heading{align-items:flex-start}.dashboard-heading .primary-button{width:100%}.dashboard-stats{grid-template-columns:1fr;gap:8px}.dashboard-stat{padding:13px 15px}.dashboard-project-grid{grid-template-columns:1fr}.create-modal{padding:19px}}
+
+
+/* Workspace actions: stronger hit targets and clear dashboard buttons */
+.workspace-heading{position:relative;z-index:25;min-height:34px}
+.workspace-heading .sidebar-add-workspace{width:34px;height:34px;min-width:34px;padding:0;margin:-4px 0;border:1px solid #3b5a6d;border-radius:8px;background:#24465a;color:#d9f4ed;display:grid;place-items:center;cursor:pointer;position:relative;z-index:30;pointer-events:auto;transition:background .18s,border-color .18s,transform .18s}
+.workspace-heading .sidebar-add-workspace:hover{background:#327969;border-color:#5bb6a4;color:#fff;transform:translateY(-1px)}
+.workspace-heading .sidebar-add-workspace:focus-visible{outline:3px solid #6bc9b5;outline-offset:3px}
+.dashboard-heading{align-items:center;gap:18px}
+.dashboard-heading .dashboard-create-button{min-height:46px;padding:0 20px;font-size:12px;flex:none;box-shadow:0 6px 16px #173b4d24}
+.dashboard-heading .dashboard-create-button svg{width:19px;height:19px}
+.dashboard-project-card{display:flex;flex-direction:column;align-items:stretch;min-height:190px}
+.dashboard-project-card h3{font-size:15px}
+.dashboard-project-card p{font-size:11px;min-height:42px;line-height:1.65}
+.dashboard-open-link{width:100%;min-height:39px;justify-content:center;margin-top:auto;padding:9px 13px;border:1px solid #cfe3de;border-radius:7px;background:#eef7f4;color:#28796e;font-size:11px;font-weight:800;cursor:pointer}
+.dashboard-open-link:hover{background:#dff0eb;border-color:#9bcbbf;color:#205e56}
+.modal-backdrop{position:fixed!important;z-index:9999!important;inset:0!important;pointer-events:auto}
+.create-modal{position:relative;z-index:10000;max-height:calc(100vh - 36px);overflow-y:auto}
+@media(max-width:800px){.dashboard-heading{align-items:stretch;flex-direction:column}.dashboard-heading .dashboard-create-button{width:100%;min-height:44px}.dashboard-project-card{min-height:0}.dashboard-project-card p{min-height:0}}
