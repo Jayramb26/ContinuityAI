@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   BrainCircuit, Plus, Upload, CheckCircle2, AlertTriangle, FileText,
@@ -34,6 +34,7 @@ function App() {
   const [brandRule, setBrandRule] = useState("");
   const [brandSeverity, setBrandSeverity] = useState("warning");
   const [brandDecisionNote, setBrandDecisionNote] = useState({});
+  const brandFileInput = useRef(null);
 
   const req = async (path, options = {}) => {
     const response = await fetch(API + path, options);
@@ -73,10 +74,9 @@ function App() {
   useEffect(() => { refresh(null); }, []);
 
   const loadBrand = async () => {
-    try {
-      const [guidelines, reviews] = await Promise.all([req("/brand/guidelines"), req("/brand/reviews")]);
-      setBrandGuidelines(guidelines); setBrandReviews(reviews);
-    } catch (e) { setError(e.message); }
+    const [guidelines, reviews] = await Promise.all([req("/brand/guidelines"), req("/brand/reviews")]);
+    setBrandGuidelines(guidelines); setBrandReviews(reviews);
+    return { guidelines, reviews };
   };
 
   const openBrand = async () => {
@@ -93,13 +93,23 @@ function App() {
   };
 
   const uploadBrandContent = async (event) => {
-    const file = event.target.files?.[0]; if (!file) return;
-    const form = new FormData(); form.append("file", file); setBusy(true);
+    const input = event.target;
+    const file = input.files?.[0];
+    if (!file) return;
+    setError(""); setNotice(""); setBusy(true);
+    const form = new FormData();
+    form.append("file", file);
     try {
       const result = await req("/brand/reviews", { method: "POST", body: form });
-      await loadBrand(); setNotice("Content checked against " + brandGuidelines.length + " active guideline(s). " + result.finding_count + " finding(s) need human review.");
-    } catch (e) { setError(e.message); }
-    finally { setBusy(false); event.target.value = ""; }
+      await loadBrand();
+      setNotice("Checked " + file.name + ": " + result.finding_count + " finding(s), including " + result.critical_count + " critical. Review the report below and record a human decision.");
+      document.querySelector(".brand-review-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch (e) {
+      setError("Could not check " + file.name + ". " + e.message);
+    } finally {
+      setBusy(false);
+      input.value = "";
+    }
   };
 
   const decideBrandReview = async (review, status) => {
@@ -287,7 +297,7 @@ function App() {
             <div className="brand-governance-page">
               <section className="page-intro">
                 <div><div className="eyebrow">CONTENT COMPLIANCE WORKFLOW</div><h1>Brand governance</h1><p>Check content against approved brand rules, explain every finding, and keep the final decision with a human reviewer.</p></div>
-                <label className="primary-button"><Upload size={16}/> Check content<input type="file" accept=".pdf,.docx,.txt,.md" hidden onChange={uploadBrandContent}/></label>
+                <button type="button" className="primary-button" onClick={() => brandFileInput.current?.click()} disabled={busy}><Upload size={16}/>{busy ? "Checking content…" : "Check content"}</button><input ref={brandFileInput} type="file" accept=".pdf,.docx,.txt,.md" hidden onChange={uploadBrandContent}/><span className="upload-hint">Choose a PDF, DOCX, TXT or MD file (max 10 MB)</span>
               </section>
               <div className="brand-workflow-steps"><div><b>01 · Define</b><span>Approved terms, facts, assets and tone</span></div><div><b>02 · Check</b><span>Evidence-linked rule matching</span></div><div><b>03 · Decide</b><span>Human approval, rejection or changes</span></div></div>
               <div className="brand-grid">
@@ -309,7 +319,7 @@ function App() {
                     {review.findings.length ? review.findings.map((finding,index) => <div className={"brand-finding severity-" + finding.severity} key={index}><div><span>{finding.severity}</span><b>{finding.issue}</b></div><p>{finding.explanation}</p><small>Suggested action: {finding.recommendation}</small></div>) : <div className="brand-clean-result"><CheckCircle2 size={16}/> No configured rule violations detected. Human review is still required.</div>}
                     <details className="brand-content-preview"><summary>View submitted content</summary><pre>{review.content}</pre></details>
                     {review.status === "pending" ? <div className="brand-human-decision"><label>Reviewer note<textarea rows={2} value={brandDecisionNote[review.id] || ""} onChange={e => setBrandDecisionNote(prev => ({...prev,[review.id]:e.target.value}))} placeholder="Explain approval, rejection or required changes."/></label><div><button className="small-button approve-button" onClick={() => decideBrandReview(review,"approved")}><CheckCircle2 size={13}/> Approve</button><button className="small-button" onClick={() => decideBrandReview(review,"changes_requested")}>Request changes</button><button className="small-button" onClick={() => decideBrandReview(review,"rejected")}>Reject</button></div></div> : <p className="brand-decision-note"><b>Human decision:</b> {review.status.replaceAll("_"," ")} {review.decision_note ? "— " + review.decision_note : ""}</p>}
-                  </article>) : <div className="dashboard-empty"><div className="empty-icon"><FileCheck size={25}/></div><h3>No content submitted</h3><p>Add approved rules, then upload a content file to see a review report with explainable findings and human decision controls.</p><label className="primary-button"><Upload size={15}/> Upload content<input type="file" accept=".pdf,.docx,.txt,.md" hidden onChange={uploadBrandContent}/></label></div>}
+                  </article>) : <div className="dashboard-empty"><div className="empty-icon"><FileCheck size={25}/></div><h3>No content submitted</h3><p>Add approved rules, then upload a content file to see a review report with explainable findings and human decision controls.</p><button type="button" className="primary-button" onClick={() => brandFileInput.current?.click()} disabled={busy}><Upload size={15}/>{busy ? "Checking content…" : "Upload content"}</button></div>}
                 </section>
               </div>
               <p className="brand-disclaimer">Checking is deterministic phrase/rule matching, not legal review or semantic fact verification. Missing facts are marked for verification, not labelled false. A human decision is required before publication.</p>
