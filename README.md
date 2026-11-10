@@ -10,8 +10,11 @@ ContinuityAI is an evidence-first project knowledge handover MVP. It turns autho
 2. Upload PDF, DOCX, TXT or Markdown source files (maximum 10 MB per file).
 3. Extract candidate knowledge using rule-based matching, with optional OpenAI-compatible LLM extraction.
 4. Keep a verbatim evidence excerpt and source-document reference with each candidate.
-5. Edit, approve, reject or mark candidates as unknown.
-6. Review a checklist-based handover view and export Markdown.
+5. Assign explicit owners, due dates, priorities and work states (open, in progress, blocked, done).
+6. Add decisions, tasks, risks and questions manually when context is not present in an uploaded file.
+7. Record project updates in a timestamped activity timeline; uploads and knowledge-item changes are logged automatically.
+8. Edit, approve, reject or mark candidates as unknown.
+9. Review unfinished and unassigned work, blocked items, overdue tasks and risks in the handover, then export Markdown.
 
 ## Technology
 
@@ -78,11 +81,11 @@ Do not claim the public demo is live until these checks pass.
 - The app has no authentication, authorisation, workspace membership or role-based access. Do not put confidential or personal project information in a public deployment.
 - The Render Blueprint uses SQLite by default. Free service storage may be ephemeral, so data can be lost on restart or redeploy. Use persistent PostgreSQL and appropriate file storage for a durable deployment.
 - Uploads are limited to 10 MB per file. Supported formats are PDF, DOCX, TXT and Markdown.
-- Rule-based extraction searches for explicit decision/action/risk/question cues and can miss implicit context.
+- Rule-based extraction searches for explicit decision/action/risk/question cues and can miss implicit context. Owner and due-date extraction is conservative and only attempts to capture explicitly written names and ISO dates; review every candidate.
 - LLM extraction is optional. If enabled, data is sent to the configured provider; review its data-handling terms before use.
 - Evidence substring validation does not perform semantic entailment or contradiction detection.
 - The readiness percentage is an illustrative checklist indicator, not a validated project-health score.
-- Audit logs, malware scanning, controlled sharing and real-time collaboration are not implemented.
+- The activity timeline records actions performed in ContinuityAI; it is not yet a live audit feed from external tools. Authentication, malware scanning, controlled sharing and real-time collaboration are not implemented.
 - GitHub, Slack, Teams and email ingestion are not implemented.
 
 ## API endpoints
@@ -92,7 +95,9 @@ Do not claim the public demo is live until these checks pass.
 - `POST /api/projects`
 - `GET /api/projects/{id}`
 - `POST /api/projects/{id}/upload`
-- `PATCH /api/items/{id}`
+- `POST /api/projects/{id}/items` (manually record a decision, task, risk or question)
+- `POST /api/projects/{id}/activity` (record a project update)
+- `PATCH /api/items/{id}` (review and update owner, due date, priority and work status)
 - `GET /api/projects/{id}/handover`
 - `GET /api/projects/{id}/handover.md`
 
