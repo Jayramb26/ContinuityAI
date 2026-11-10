@@ -4,7 +4,7 @@ import {
   BrainCircuit, Plus, Upload, CheckCircle2, AlertTriangle, FileText,
   Download, RefreshCw, Search, LayoutDashboard, Layers3, ClipboardCheck,
   Clock3, ShieldCheck, ArrowUpRight, Sparkles, CircleHelp, ListTodo,
-  Menu, X, ExternalLink
+  Menu, X, ExternalLink, ShieldAlert, FileCheck, Trash2
 } from "lucide-react";
 import "./style.css";
 
@@ -27,6 +27,13 @@ function App() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [mobileNav, setMobileNav] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [brandGuidelines, setBrandGuidelines] = useState([]);
+  const [brandReviews, setBrandReviews] = useState([]);
+  const [brandName, setBrandName] = useState("");
+  const [brandKind, setBrandKind] = useState("prohibited_term");
+  const [brandRule, setBrandRule] = useState("");
+  const [brandSeverity, setBrandSeverity] = useState("warning");
+  const [brandDecisionNote, setBrandDecisionNote] = useState({});
 
   const req = async (path, options = {}) => {
     const response = await fetch(API + path, options);
@@ -64,6 +71,49 @@ function App() {
   };
 
   useEffect(() => { refresh(null); }, []);
+
+  const loadBrand = async () => {
+    try {
+      const [guidelines, reviews] = await Promise.all([req("/brand/guidelines"), req("/brand/reviews")]);
+      setBrandGuidelines(guidelines); setBrandReviews(reviews);
+    } catch (e) { setError(e.message); }
+  };
+
+  const openBrand = async () => {
+    setPage("brand"); setMobileNav(false); await loadBrand();
+  };
+
+  const saveBrandGuideline = async (event) => {
+    event.preventDefault();
+    try {
+      await req("/brand/guidelines", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: brandName, kind: brandKind, content: brandRule, severity: brandSeverity }) });
+      setBrandName(""); setBrandRule(""); await loadBrand(); setNotice("Approved brand rule added.");
+    } catch (e) { setError(e.message); }
+  };
+
+  const uploadBrandContent = async (event) => {
+    const file = event.target.files?.[0]; if (!file) return;
+    const form = new FormData(); form.append("file", file); setBusy(true);
+    try {
+      const result = await req("/brand/reviews", { method: "POST", body: form });
+      await loadBrand(); setNotice("Content checked against " + brandGuidelines.length + " active guideline(s). " + result.finding_count + " finding(s) need human review.");
+    } catch (e) { setError(e.message); }
+    finally { setBusy(false); event.target.value = ""; }
+  };
+
+  const decideBrandReview = async (review, status) => {
+    try {
+      await req("/brand/reviews/" + review.id, { method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status, decision_note: brandDecisionNote[review.id] || "" }) });
+      await loadBrand(); setNotice("Human decision saved: " + status.replaceAll("_", " ") + ".");
+    } catch (e) { setError(e.message); }
+  };
+
+  const deleteBrandGuideline = async (id) => {
+    try { await req("/brand/guidelines/" + id, { method: "DELETE" }); await loadBrand(); setNotice("Guideline removed."); }
+    catch (e) { setError(e.message); }
+  };
 
   const select = async (id) => {
     setBusy(true); setError("");
@@ -192,6 +242,9 @@ function App() {
         <button type="button" className={"side-link " + (page === "dashboard" ? "side-active" : "")} onClick={() => { setPage("dashboard"); setMobileNav(false); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
           <LayoutDashboard size={17}/> Dashboard
         </button>
+        <button type="button" className={"side-link " + (page === "brand" ? "side-active" : "")} onClick={openBrand}>
+          <ShieldAlert size={17}/> Brand governance
+        </button>
         <div className="workspace-heading" onClick={() => { setError(""); setCreateModalOpen(true); setMobileNav(false); }}><span>YOUR PROJECTS</span><button type="button" className="sidebar-add-workspace" onClick={event => { event.preventDefault(); event.stopPropagation(); setError(""); setCreateModalOpen(true); setMobileNav(false); }} aria-label="Create workspace" aria-haspopup="dialog" aria-expanded={createModalOpen} title="Create workspace"><Plus size={18}/></button></div>
         <div className="project-list">
           {projects.map(project => (
@@ -214,7 +267,7 @@ function App() {
         <header className="topbar">
           <div className="topbar-left">
             <button className="mobile-menu" onClick={() => setMobileNav(true)} aria-label="Open menu"><Menu size={20}/></button>
-            <span className="crumb-muted">CONTINUITYAI</span><span className="crumb-slash">/</span><b>{page === "dashboard" ? "Dashboard" : (detail?.name || "Project workspace")}</b>
+            <span className="crumb-muted">CONTINUITYAI</span><span className="crumb-slash">/</span><b>{page === "dashboard" ? "Dashboard" : page === "brand" ? "Brand governance" : (detail?.name || "Project workspace")}</b>
           </div>
           <div className="topbar-actions">
             <span className="secure-label"><ShieldCheck size={14}/> Evidence-first workflow</span>
@@ -230,7 +283,38 @@ function App() {
           {error && <div className="toast toast-error"><AlertTriangle size={16}/><span>{error}</span><button onClick={() => setError("")}>Dismiss</button></div>}
           {notice && <div className="toast toast-success"><CheckCircle2 size={16}/><span>{notice}</span><button onClick={() => setNotice("")}>Dismiss</button></div>}
 
-          {page === "dashboard" ? (
+          {page === "brand" ? (
+            <div className="brand-governance-page">
+              <section className="page-intro">
+                <div><div className="eyebrow">CONTENT COMPLIANCE WORKFLOW</div><h1>Brand governance</h1><p>Check content against approved brand rules, explain every finding, and keep the final decision with a human reviewer.</p></div>
+                <label className="primary-button"><Upload size={16}/> Check content<input type="file" accept=".pdf,.docx,.txt,.md" hidden onChange={uploadBrandContent}/></label>
+              </section>
+              <div className="brand-workflow-steps"><div><b>01 · Define</b><span>Approved terms, facts, assets and tone</span></div><div><b>02 · Check</b><span>Evidence-linked rule matching</span></div><div><b>03 · Decide</b><span>Human approval, rejection or changes</span></div></div>
+              <div className="brand-grid">
+                <section className="surface-card brand-guideline-panel">
+                  <div className="section-heading"><div><span className="eyebrow">SOURCE OF TRUTH</span><h2>Approved guidelines</h2><p className="section-subtitle">Create explicit rules before submitting content for review.</p></div><span className="total-pill">{brandGuidelines.length} rules</span></div>
+                  <form className="brand-rule-form" onSubmit={saveBrandGuideline}>
+                    <label>Rule name<input value={brandName} onChange={e => setBrandName(e.target.value)} placeholder="e.g. Product name spelling" required/></label>
+                    <div className="brand-form-row"><label>Rule type<select value={brandKind} onChange={e => setBrandKind(e.target.value)}><option value="required_term">Required term</option><option value="prohibited_term">Prohibited term</option><option value="approved_fact">Approved fact</option><option value="approved_asset">Approved asset / identifier</option><option value="tone_rule">Tone of voice</option></select></label><label>Severity<select value={brandSeverity} onChange={e => setBrandSeverity(e.target.value)}><option value="info">Info</option><option value="warning">Warning</option><option value="critical">Critical</option></select></label></div>
+                    <label>Approved rule or exact phrase<textarea value={brandRule} onChange={e => setBrandRule(e.target.value)} rows={3} placeholder="Enter exact approved/prohibited wording, fact, asset URL/name, or tone guidance." required/></label>
+                    <button className="primary-button" type="submit"><Plus size={15}/> Add guideline</button>
+                  </form>
+                  <div className="brand-guideline-list">{brandGuidelines.length ? brandGuidelines.map(rule => <article className="brand-guideline" key={rule.id}><div><span className={"brand-kind kind-" + rule.kind}>{rule.kind.replaceAll("_"," ")}</span><b>{rule.name}</b><p>{rule.content}</p><small>{rule.severity} severity</small></div><button className="small-button" onClick={() => deleteBrandGuideline(rule.id)} title="Remove guideline"><Trash2 size={14}/></button></article>) : <div className="inline-empty"><ShieldAlert size={20}/><span>No brand rules yet. Add at least one approved guideline before checking content.</span></div>}</div>
+                </section>
+                <section className="surface-card brand-review-panel">
+                  <div className="section-heading"><div><span className="eyebrow">CONTENT REVIEW QUEUE</span><h2>Submitted content</h2><p className="section-subtitle">Automated checks flag potential issues; reviewers make the final call.</p></div><span className="total-pill">{brandReviews.length} submissions</span></div>
+                  {brandReviews.length ? brandReviews.map(review => <article className="brand-review-card" key={review.id}>
+                    <div className="brand-review-head"><div><h3>{review.filename}</h3><small>Submitted {new Date(review.created_at).toLocaleString()}</small></div><span className={"review-status status-" + (review.status === "pending" ? "needs_review" : review.status)}>{review.status.replaceAll("_"," ")}</span></div>
+                    <div className="brand-review-summary"><span><b>{review.finding_count}</b> findings</span><span><b>{review.critical_count}</b> critical</span></div>
+                    {review.findings.length ? review.findings.map((finding,index) => <div className={"brand-finding severity-" + finding.severity} key={index}><div><span>{finding.severity}</span><b>{finding.issue}</b></div><p>{finding.explanation}</p><small>Suggested action: {finding.recommendation}</small></div>) : <div className="brand-clean-result"><CheckCircle2 size={16}/> No configured rule violations detected. Human review is still required.</div>}
+                    <details className="brand-content-preview"><summary>View submitted content</summary><pre>{review.content}</pre></details>
+                    {review.status === "pending" ? <div className="brand-human-decision"><label>Reviewer note<textarea rows={2} value={brandDecisionNote[review.id] || ""} onChange={e => setBrandDecisionNote(prev => ({...prev,[review.id]:e.target.value}))} placeholder="Explain approval, rejection or required changes."/></label><div><button className="small-button approve-button" onClick={() => decideBrandReview(review,"approved")}><CheckCircle2 size={13}/> Approve</button><button className="small-button" onClick={() => decideBrandReview(review,"changes_requested")}>Request changes</button><button className="small-button" onClick={() => decideBrandReview(review,"rejected")}>Reject</button></div></div> : <p className="brand-decision-note"><b>Human decision:</b> {review.status.replaceAll("_"," ")} {review.decision_note ? "— " + review.decision_note : ""}</p>}
+                  </article>) : <div className="dashboard-empty"><div className="empty-icon"><FileCheck size={25}/></div><h3>No content submitted</h3><p>Add approved rules, then upload a content file to see a review report with explainable findings and human decision controls.</p><label className="primary-button"><Upload size={15}/> Upload content<input type="file" accept=".pdf,.docx,.txt,.md" hidden onChange={uploadBrandContent}/></label></div>}
+                </section>
+              </div>
+              <p className="brand-disclaimer">Checking is deterministic phrase/rule matching, not legal review or semantic fact verification. Missing facts are marked for verification, not labelled false. A human decision is required before publication.</p>
+            </div>
+          ) : page === "dashboard" ? (
             <>
               <section className="page-intro dashboard-heading">
                 <div><div className="eyebrow">YOUR WORKSPACE HUB</div><h1>Good to have you back.</h1><p>Keep project knowledge connected, track your workspaces and prepare reliable team handovers.</p></div>
