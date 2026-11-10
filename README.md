@@ -16,6 +16,12 @@ ContinuityAI is an evidence-first project knowledge handover MVP. It turns autho
 8. Edit, approve, reject or mark candidates as unknown.
 9. Review unfinished and unassigned work, blocked items, overdue tasks and risks in the handover, then export Markdown.
 
+## Brand governance workflow
+
+A separate Brand Governance area is available from the sidebar. Add explicit approved rules for required terms, prohibited terms, approved facts, approved assets/identifiers and tone guidance. Upload a PDF, DOCX, TXT or Markdown content draft to create an explainable review report. Findings include the matched rule, severity, explanation and suggested action. A human reviewer must then approve, reject or request changes and can leave a decision note.
+
+The checks are deliberately transparent: required/prohibited terms and asset identifiers use exact case-insensitive phrase matching; approved facts are checked for exact approved wording and missing matches are marked for verification, not declared false. Tone guidance is always surfaced for human review. Potential absolute claims (such as guaranteed or risk-free) are flagged for substantiation. This is a review assistant, not legal advice, semantic fact verification or an automatic publication gate.
+
 ## Technology
 
 - Frontend: React, Vite, JavaScript, CSS and Lucide icons.
@@ -90,6 +96,8 @@ Do not claim the public demo is live until these checks pass.
 
 ## API endpoints
 
+- `GET /api/brand/guidelines`, `POST /api/brand/guidelines`, `DELETE /api/brand/guidelines/{id}`
+- `GET /api/brand/reviews`, `POST /api/brand/reviews`, `PATCH /api/brand/reviews/{id}`
 - `GET /api/health`
 - `GET /api/projects`
 - `POST /api/projects`
