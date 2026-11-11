@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import "./style.css";
 
-const API = import.meta.env.VITE_API_URL || "https://continuityai-api.onrender.com/api";
+const API = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
 
 function App() {
   const [projects, setProjects] = useState([]);
@@ -81,7 +81,7 @@ function App() {
 
   const openBrand = async () => {
     setPage("brand"); setMobileNav(false); setError("");
-    try { await loadBrand(); } catch (e) { setError(e.message); }
+    try { await loadBrand(); } catch (e) { setError(/not found|404/i.test(e.message) ? "Brand Governance routes were not found on the connected API. Deploy the latest backend from the main branch, then refresh." : e.message); }
   };
 
   const saveBrandGuideline = async (event) => {
