@@ -1,6 +1,9 @@
 """End-to-end API tests for the local ContinuityAI MVP."""
 import os
 from pathlib import Path
+from io import BytesIO
+import fitz
+from docx import Document
 import pytest
 from fastapi.testclient import TestClient
 
@@ -61,6 +64,47 @@ def test_document_to_reviewed_handover_export(client):
     assert export.headers["content-type"].startswith("text/markdown")
     assert "# Handover: Continuity Demo" in export.text
     assert "Reviewed:" in export.text
+
+
+def test_pdf_and_docx_ingestion(client):
+    project_id = create_project(client)
+    source = ("Decision: We decided to use React for the frontend.\\n"
+              "Task: Assigned to Aarav, complete API integration by 2026-11-20.\\n"
+              "Risk: Deployment may fail if environment variables are missing.\\n"
+              "Question: Confirm who owns the final release checklist.")
+
+    docx = Document()
+    for line in source.splitlines():
+        docx.add_paragraph(line)
+    docx_buffer = BytesIO()
+    docx.save(docx_buffer)
+
+    pdf = fitz.open()
+    page = pdf.new_page()
+    page.insert_textbox(fitz.Rect(50, 50, 550, 750), source, fontsize=11, lineheight=1.4)
+    pdf_bytes = pdf.tobytes()
+    pdf.close()
+
+    uploads = [
+        ("meeting-notes.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", docx_buffer.getvalue()),
+        ("meeting-notes.pdf", "application/pdf", pdf_bytes),
+    ]
+    for filename, content_type, data in uploads:
+        response = client.post(
+            f"/api/projects/{project_id}/upload",
+            files={"file": (filename, data, content_type)}
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["extracted_count"] >= 3
+        assert response.json()["document"]["characters"] > 100
+
+    project = client.get(f"/api/projects/{project_id}").json()
+    assert {doc["filename"] for doc in project["documents"]} == {
+        "meeting-notes.docx", "meeting-notes.pdf"
+    }
+    assert len(project["items"]) >= 6
+    assert all(item["evidence"] for item in project["items"])
+
 
 def test_rejects_unsupported_file_type(client):
     project_id = create_project(client)
