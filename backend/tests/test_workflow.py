@@ -22,6 +22,15 @@ def create_project(client):
     assert response.status_code == 200
     return response.json()["id"]
 
+def test_health_and_brand_governance_routes(client):
+    health = client.get("/api/health")
+    assert health.status_code == 200
+    assert health.json()["status"] == "ok"
+    assert health.json()["version"] == "0.3.0"
+    assert client.get("/api/brand/guidelines").json() == []
+    assert client.get("/api/brand/reviews").json() == []
+
+
 def test_document_to_reviewed_handover_export(client):
     project_id = create_project(client)
     source = ("Decision: We decided to use FastAPI for the backend. "
