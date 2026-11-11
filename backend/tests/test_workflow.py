@@ -68,9 +68,9 @@ def test_document_to_reviewed_handover_export(client):
 
 def test_pdf_and_docx_ingestion(client):
     project_id = create_project(client)
-    source = ("Decision: We decided to use React for the frontend.\\n"
-              "Task: Assigned to Aarav, complete API integration by 2026-11-20.\\n"
-              "Risk: Deployment may fail if environment variables are missing.\\n"
+    source = ("Decision: We decided to use React for the frontend.\n"
+              "Task: Assigned to Aarav, complete API integration by 2026-11-20.\n"
+              "Risk: Deployment may fail if environment variables are missing.\n"
               "Question: Confirm who owns the final release checklist.")
 
     docx = Document()
