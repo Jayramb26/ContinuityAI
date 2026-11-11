@@ -160,7 +160,7 @@ def decide_brand_review(review_id: int, payload: BrandDecision, db: Session = De
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "app": "ContinuityAI", "version": "0.2.0"}
+    return {"status": "ok", "app": "ContinuityAI", "version": "0.3.0"}
 
 def project_dict(p):
     return {"id": p.id, "name": p.name, "description": p.description, "created_at": p.created_at.isoformat()}
