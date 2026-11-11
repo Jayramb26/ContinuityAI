@@ -109,6 +109,10 @@ Do not claim the public demo is live until these checks pass.
 - `GET /api/projects/{id}/handover`
 - `GET /api/projects/{id}/handover.md`
 
+## Automated checks
+
+GitHub Actions runs the backend integration tests and builds the Vite frontend on pushes and pull requests to `main`. The workflow is in `.github/workflows/ci.yml`.
+
 ## Run backend tests
 
 From `backend`:
