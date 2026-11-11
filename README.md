@@ -122,7 +122,7 @@ python -m pytest -q
 
 ## Suggested demo flow
 
-Create a synthetic project such as “Campus Event Portal”, upload mock meeting notes and a decision log, review the extracted candidates, approve only accurate evidence-backed items, then export the handover.
+Create a workspace named “Campus Event Portal”, upload [`demo-data/synthetic-project-meeting-notes.md`](demo-data/synthetic-project-meeting-notes.md), review the extracted candidates, approve only accurate evidence-backed items, then export the Markdown handover. The sample contains fictional decisions, owners, due dates, risks, dependencies and open questions.
 
 ## Repository structure
 
