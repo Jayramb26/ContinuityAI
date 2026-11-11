@@ -32,7 +32,7 @@ The checks are deliberately transparent: required/prohibited terms and asset ide
 
 ## Run locally
 
-Requirements: Python 3.10+ and Node.js 18+.
+Requirements: Python 3.11+ and Node.js 22.12+ (the frontend declares this engine requirement).
 
 ### Backend
 ```bash
