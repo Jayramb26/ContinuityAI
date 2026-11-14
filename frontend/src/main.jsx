@@ -4,7 +4,7 @@ import {
   BrainCircuit, Plus, Upload, CheckCircle2, AlertTriangle, FileText,
   Download, RefreshCw, Search, LayoutDashboard, Layers3, ClipboardCheck,
   Clock3, ShieldCheck, ArrowUpRight, Sparkles, CircleHelp, ListTodo,
-  Menu, X, ExternalLink, ShieldAlert, FileCheck, Trash2
+  Menu, X, ExternalLink, ShieldAlert, FileCheck, Trash2, Network, MessageCircle
 } from "lucide-react";
 import "./style.css";
 
@@ -34,6 +34,10 @@ function App() {
   const [brandRule, setBrandRule] = useState("");
   const [brandSeverity, setBrandSeverity] = useState("warning");
   const [brandDecisionNote, setBrandDecisionNote] = useState({});
+  const [intelligence, setIntelligence] = useState(null);
+  const [assistantQuestion, setAssistantQuestion] = useState("");
+  const [assistantAnswer, setAssistantAnswer] = useState(null);
+  const [assistantBusy, setAssistantBusy] = useState(false);
   const brandFileInput = useRef(null);
 
   const req = async (path, options = {}) => {
@@ -222,6 +226,29 @@ function App() {
     } catch (e) { setError(e.message); }
   };
 
+
+  const loadIntelligence = async () => {
+    if (!active) return;
+    try {
+      const result = await req("/projects/" + active + "/intelligence");
+      setIntelligence(result);
+    } catch (e) { setError(e.message); }
+  };
+
+  const askAssistant = async (event) => {
+    event.preventDefault();
+    if (!assistantQuestion.trim() || !active) return;
+    setAssistantBusy(true); setError(""); setAssistantAnswer(null);
+    try {
+      const result = await req("/projects/" + active + "/ask", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: assistantQuestion.trim() })
+      });
+      setAssistantAnswer(result);
+    } catch (e) { setError(e.message); }
+    finally { setAssistantBusy(false); }
+  };
+
   const items = detail?.items || [];
   const documents = detail?.documents || [];
   const approved = items.filter(item => item.status === "approved").length;
@@ -237,7 +264,9 @@ function App() {
     { id: "overview", label: "Overview", icon: LayoutDashboard },
     { id: "knowledge", label: "Knowledge review", icon: ClipboardCheck },
     { id: "sources", label: "Sources", icon: FileText },
-    { id: "handover", label: "Handover", icon: ShieldCheck }
+    { id: "handover", label: "Handover", icon: ShieldCheck },
+    { id: "intelligence", label: "Intelligence", icon: Network },
+    { id: "assistant", label: "Ask assistant", icon: MessageCircle }
   ];
 
   return (
@@ -368,7 +397,7 @@ function App() {
               </section>
 
               <nav className="tab-bar" aria-label="Project sections">
-                {tabs.map(({ id, label, icon: Icon }) => <button key={id} className={tab === id ? "tab-active" : ""} onClick={() => setTab(id)}><Icon size={16}/>{label}{id === "knowledge" && needsReview > 0 && <span className="tab-count">{needsReview}</span>}</button>)}
+                {tabs.map(({ id, label, icon: Icon }) => <button key={id} className={tab === id ? "tab-active" : ""} onClick={() => { setTab(id); if (id === "intelligence") loadIntelligence(); }}><Icon size={16}/>{label}{id === "knowledge" && needsReview > 0 && <span className="tab-count">{needsReview}</span>}</button>)}
               </nav>
 
               {tab === "overview" && (
@@ -449,6 +478,38 @@ function App() {
                   </section>
                 </div>
               )}
+
+              {tab === "intelligence" && (
+                <section className="surface-card knowledge-card">
+                  <div className="section-heading"><div><span className="eyebrow">KNOWLEDGE INTELLIGENCE</span><h2>Dependencies, conflicts and missing context</h2><p className="section-subtitle">Transparent rule-based checks surface items that need human attention.</p></div><button className="secondary-button" type="button" onClick={loadIntelligence}><RefreshCw size={14}/> Re-analyse</button></div>
+                  {intelligence ? <>
+                    <div className="dashboard-stats">
+                      <article className="dashboard-stat"><div><strong>{intelligence.counts.dependencies}</strong><b>Dependency cues</b><small>Explicit phrases in source text</small></div></article>
+                      <article className="dashboard-stat"><div><strong>{intelligence.counts.possible_conflicts}</strong><b>Possible conflicts</b><small>Opposing decision language</small></div></article>
+                      <article className="dashboard-stat"><div><strong>{intelligence.counts.knowledge_gaps}</strong><b>Knowledge gaps</b><small>Missing ownership, dates or review</small></div></article>
+                    </div>
+                    <h3 className="subsection-title">Possible decision conflicts</h3>
+                    {intelligence.possible_conflicts.length ? intelligence.possible_conflicts.map((item,index) => <article className="knowledge-item" key={index}><div className="item-meta"><span className="category-tag category-risk">review required</span></div><h3>{item.message}</h3><p>{item.titles.join(" ↔ ")}</p><div className="evidence-box"><span className="evidence-label">CONFLICTING SOURCE EVIDENCE</span><p>{item.evidence.join(" / ")}</p><small>Shared terms: {item.shared_terms.join(", ")}</small></div><button className="small-button" onClick={() => setTab("knowledge")}>Review knowledge items</button></article>) : <div className="inline-empty"><CheckCircle2 size={18}/>No possible conflicts detected by the current rule set.</div>}
+                    <h3 className="subsection-title">Dependency cues</h3>
+                    {intelligence.dependencies.length ? intelligence.dependencies.map((item,index) => <div className="gap-row" key={index}><Network size={16}/><div><b>{item.title}</b><small>{item.relation}: {item.related_text} · {item.review_status}</small><small>Evidence: {item.evidence}</small></div><button onClick={() => setTab("knowledge")}>Review</button></div>) : <div className="inline-empty">No explicit dependency phrases found.</div>}
+                    <h3 className="subsection-title">Missing knowledge</h3>
+                    {intelligence.knowledge_gaps.length ? intelligence.knowledge_gaps.map((item,index) => <div className="gap-row" key={index}><AlertTriangle size={16}/><div><b>{item.title}</b><small>{item.message}</small></div><button onClick={() => setTab("knowledge")}>Fix</button></div>) : <div className="inline-empty">No configured knowledge gaps detected.</div>}
+                    <p className="brand-disclaimer">{intelligence.method}</p>
+                  </> : <div className="inline-empty">Select “Re-analyse” to inspect the current workspace.</div>}
+                </section>
+              )}
+
+              {tab === "assistant" && (
+                <section className="surface-card knowledge-card">
+                  <div className="section-heading"><div><span className="eyebrow">SOURCE-BACKED HANDOVER Q&A</span><h2>Ask your project knowledge</h2><p className="section-subtitle">Answers are retrieved from uploaded sources and recorded knowledge. Unsupported questions return no answer rather than a guess.</p></div><MessageCircle size={22}/></div>
+                  <form className="brand-rule-form" onSubmit={askAssistant}>
+                    <label>What do you need to know?<textarea rows={3} maxLength={500} value={assistantQuestion} onChange={e => setAssistantQuestion(e.target.value)} placeholder="e.g. What decision was made about the frontend? Who owns deployment?" required/></label>
+                    <button className="primary-button" type="submit" disabled={assistantBusy || !assistantQuestion.trim()}>{assistantBusy ? "Searching sources…" : "Ask ContinuityAI"}</button>
+                  </form>
+                  {assistantAnswer && <article className="knowledge-item"><div className="item-meta"><span className="category-tag category-decision">confidence: {assistantAnswer.confidence}</span></div><h3>Retrieved answer</h3><p className="item-detail">{assistantAnswer.answer}</p>{assistantAnswer.matches.map((match,index) => <div className="evidence-box" key={index}><span className="evidence-label">{match.kind === "knowledge_item" ? "KNOWLEDGE ITEM" : "SOURCE EXCERPT"} · {match.review_status}</span><b>{match.title}</b><p>{match.excerpt}</p><small>{match.filename || (match.source_id ? "Source document #" + match.source_id : "Manual knowledge")} {match.item_id ? "· Item #" + match.item_id : ""}</small></div>)}<p className="brand-disclaimer">{assistantAnswer.disclaimer}</p></article>}
+                </section>
+              )}
+
             </>
           )}
 
