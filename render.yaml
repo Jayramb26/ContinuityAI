@@ -13,6 +13,12 @@ services:
         value: 3.11.11
       - key: CORS_ORIGINS
         value: https://continuityai-web.onrender.com,http://localhost:5173,http://127.0.0.1:5173
+      - key: AUTH_SECRET
+        generateValue: true
+      - key: DEMO_EMAIL
+        value: demo@continuityai.app
+      - key: DEMO_PASSWORD
+        value: ContinuityDemo2026!
   - type: web
     name: continuityai-web
     runtime: static
