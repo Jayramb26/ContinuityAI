@@ -1,7 +1,8 @@
 from datetime import datetime, timezone
 from pathlib import Path
 import os
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
+import secrets
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from sqlalchemy import select, text, inspect
@@ -11,6 +12,7 @@ from .models import Project, SourceDocument, KnowledgeItem, ActivityEvent, Brand
 from .schemas import ProjectCreate, ReviewUpdate, KnowledgeCreate, ActivityCreate, BrandGuidelineCreate, BrandDecision
 from .ingestion import extract_text, chunks
 from .knowledge import heuristic_extract, ai_extract
+from .intelligence import analyze_project, answer_project_question
 
 Base.metadata.create_all(bind=engine)
 
@@ -353,3 +355,71 @@ def handover_markdown(project_id: int, db: Session = Depends(get_db)):
     lines += ["", "## Recommended next actions"] + [f"- {x}" for x in data["next_steps"]]
     return Response(content="\n".join(lines), media_type="text/markdown; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="continuityai-handover-{project_id}.md"'})
+
+
+@app.get("/api/projects/{project_id}/intelligence")
+def project_intelligence(project_id: int, db: Session = Depends(get_db)):
+    get_project_or_404(project_id, db)
+    items = db.scalars(select(KnowledgeItem).where(KnowledgeItem.project_id == project_id)).all()
+    return analyze_project([item_dict(i) for i in items])
+
+
+@app.post("/api/projects/{project_id}/ask")
+def ask_project(project_id: int, payload: dict, db: Session = Depends(get_db)):
+    get_project_or_404(project_id, db)
+    question = str(payload.get("question", "")).strip()
+    if not question:
+        raise HTTPException(400, "Question is required")
+    if len(question) > 500:
+        raise HTTPException(400, "Question must be 500 characters or fewer")
+    docs = db.scalars(select(SourceDocument).where(SourceDocument.project_id == project_id)).all()
+    items = db.scalars(select(KnowledgeItem).where(KnowledgeItem.project_id == project_id)).all()
+    return answer_project_question(
+        question,
+        [{"id": d.id, "filename": d.filename, "content": d.content} for d in docs],
+        [item_dict(i) for i in items],
+    )
+
+
+@app.post("/api/projects/{project_id}/integrations/events")
+def receive_integration_event(
+    project_id: int,
+    payload: dict,
+    x_integration_token: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    """Receive a normalized event from a trusted GitHub/Slack/PM webhook adapter."""
+    configured_token = os.getenv("INTEGRATION_WEBHOOK_TOKEN", "")
+    if not configured_token:
+        raise HTTPException(503, "Integration webhook is disabled until INTEGRATION_WEBHOOK_TOKEN is configured")
+    if not x_integration_token or not secrets.compare_digest(x_integration_token, configured_token):
+        raise HTTPException(401, "Invalid integration token")
+    get_project_or_404(project_id, db)
+    provider = str(payload.get("provider", "external"))[:40]
+    event_type = str(payload.get("event_type", "update"))[:50]
+    title = str(payload.get("title", "")).strip()[:300]
+    body = str(payload.get("body", "")).strip()[:5000]
+    url = str(payload.get("url", "")).strip()[:1000]
+    actor = str(payload.get("actor", "")).strip()[:180]
+    if not title and not body:
+        raise HTTPException(400, "Integration event needs a title or body")
+    summary = f"[{provider}] {event_type}: {title or body[:180]}"
+    if actor:
+        summary += f" · by {actor}"
+    if url:
+        summary += f" · {url}"
+    db.add(ActivityEvent(project_id=project_id, event_type=f"{provider}_{event_type}"[:50], message=summary[:2000]))
+    created_item_id = None
+    category = str(payload.get("category", "")).lower()
+    if category in {"decision", "task", "risk", "question"} and title:
+        item = KnowledgeItem(
+            project_id=project_id, category=category, title=title,
+            detail=body, evidence=body, status="needs_review", verified=False,
+            owner=actor, due_date="", priority="medium", work_status="open",
+        )
+        db.add(item)
+        db.flush()
+        created_item_id = item.id
+    db.commit()
+    return {"received": True, "provider": provider, "created_item_id": created_item_id,
+            "message": "Event recorded in the project activity timeline. Any created knowledge item requires human review."}
