@@ -22,13 +22,15 @@ A separate Brand Governance area is available from the sidebar. Add explicit app
 
 The checks are deliberately transparent: required/prohibited terms and asset identifiers use exact case-insensitive phrase matching; approved facts are checked for exact approved wording and missing matches are marked for verification, not declared false. Tone guidance is always surfaced for human review. Potential absolute claims (such as guaranteed or risk-free) are flagged for substantiation. This is a review assistant, not legal advice, semantic fact verification or an automatic publication gate.
 
-## Round 3 improvements
+## Round 3 commitments and delivery status
 
-The current branch adds three bounded, testable improvements:
+These are the three commitments recorded in the Round 2 submission. The current implementation delivers useful parts of each, but the limitations below remain part of the product disclosure.
 
-1. **Continuous knowledge capture — authenticated event intake.** A normalized webhook endpoint can receive events from a GitHub/Slack/project-management adapter, write them to the project activity timeline, and optionally create a human-review candidate. Configure `INTEGRATION_WEBHOOK_TOKEN` on the API and send it in the `X-Integration-Token` header. This is an adapter endpoint, not a turnkey OAuth integration; provider-specific webhook mapping and secret configuration are still required.
-2. **Knowledge intelligence.** The Intelligence tab surfaces explicit dependency phrases, possible decision conflicts based on shared terms plus opposing negation, and gaps such as tasks without owners/due dates or unreviewed candidates. It is deterministic and explainable; flags require human review and are not semantic proof.
-3. **Handover Q&A.** The Ask assistant tab retrieves relevant excerpts from uploaded documents and knowledge items, prioritises approved items, displays source IDs and review state, and says when no matching source is found. It is retrieval-based, not a generative AI answer engine.
+1. **Advanced Evidence Intelligence and Conflict Detection — partially delivered.** Every extracted candidate retains a verbatim evidence excerpt and source-document ID. The Intelligence view flags explicit dependency phrases, possible decision conflicts using shared terms plus opposing negation, and gaps such as missing task owners/due dates or unreviewed candidates. These are explainable review prompts, not semantic contradiction proof. Semantic RAG, stale-source detection and robust claim-entailment verification remain future work.
+2. **Secure Access Control and Auditable Knowledge Management — partially delivered.** The Render Blueprint provisions a generated signing secret and a shared judge demo-owner login. When `AUTH_SECRET` is configured, API data routes require a signed, expiring bearer token. The Audit Log records activity type, actor label and timestamp. This is a demo access gate, not production multi-user security: per-workspace RBAC, user provisioning, individual attribution, revocable handover links and malware scanning are not implemented.
+3. **Intelligent Handover and Project Continuity Tracking — partially delivered.** Work items carry owner, due date, priority and work status. Handover highlights unassigned, overdue and blocked work, review gaps, activity and recommended next actions, and exports Markdown. The Q&A view retrieves source excerpts and labels their review state. Change-aware knowledge updates and a milestone/dependency graph remain future work.
+
+The normalized integration-event endpoint is a supporting capture adapter, not one of the three Round 2 commitments. It can record events from a trusted provider adapter; provider-specific OAuth/webhook mapping and signature verification are not included.
 
 The AI extraction provider remains optional. Without provider credentials, the application uses its rule-based extractor.
 
@@ -52,6 +54,35 @@ curl -X POST "$API_URL/api/projects/PROJECT_ID/integrations/events" \
 ```
 
 Events are recorded in the activity timeline. When `category` is one of decision, task, risk or question, a candidate is created with `needs_review` status; it is never auto-approved. Do not expose the integration token in browser code or commit it to Git.
+
+## Architecture
+
+```text
+React + Vite browser
+  ├─ Workspace dashboard, source upload, review, intelligence, Q&A, audit and handover
+  └─ Bearer session (optional when AUTH_SECRET is configured)
+          │ JSON / multipart
+          ▼
+FastAPI API
+  ├─ Auth: signed short-lived demo sessions
+  ├─ Ingestion: PyMuPDF / python-docx / UTF-8 text
+  ├─ Extraction: deterministic rules + optional OpenAI-compatible endpoint
+  ├─ Intelligence: dependency/conflict/gap heuristics + source retrieval
+  └─ Review, audit events and Markdown handover
+          │ SQLAlchemy
+          ▼
+SQLite (default) or PostgreSQL (DATABASE_URL)
+```
+
+Evidence remains attached to candidate knowledge items. Human approval is required before candidates are counted as approved handover knowledge. The current demo stores document text and project records in the database; use synthetic data only.
+
+## Roadmap
+
+- **Next:** add revocable, scoped, read-only handover links; multi-user accounts and per-workspace viewer/editor/owner permissions; named actor attribution.
+- **Evidence quality:** semantic retrieval, source versioning, stale-information detection, claim-to-evidence entailment checks and reviewer resolution workflows for contradictions.
+- **Continuity:** explicit dependency graph, milestone tracking, change-aware re-review when source material changes, and handover templates.
+- **Integrations:** provider-native GitHub webhooks with signature verification, then Slack and issue-tracker adapters.
+- **Operations:** persistent managed PostgreSQL, durable object storage, malware scanning, rate limits, structured monitoring and backup/restore.
 
 ## Technology
 
@@ -126,7 +157,7 @@ Do not claim the public demo is live until these checks pass.
 - LLM extraction is optional. If enabled, data is sent to the configured provider; review its data-handling terms before use.
 - Evidence substring validation does not perform semantic entailment. The Intelligence tab flags only explicit rule-based dependency cues and narrow possible contradictions; it can miss implicit relationships and can produce false positives.
 - The readiness percentage is an illustrative checklist indicator, not a validated project-health score.
-- The activity timeline records actions performed in ContinuityAI and normalized events posted by a trusted adapter; it is not a turnkey live audit feed from external tools. Authentication, malware scanning, controlled sharing and real-time collaboration are not implemented.
+- The audit log records project actions and a shared demo-owner actor label. It does not provide individually attributable multi-user audit history. Revocable controlled sharing, malware scanning and real-time collaboration are not implemented.
 - Provider-specific OAuth, direct GitHub/Slack/Teams/email integrations, and automated webhook signature verification are not implemented. The authenticated normalized-event intake is a connector adapter endpoint; it requires a server-side shared secret.
 
 ## API endpoints
@@ -134,6 +165,7 @@ Do not claim the public demo is live until these checks pass.
 - `GET /api/brand/guidelines`, `POST /api/brand/guidelines`, `DELETE /api/brand/guidelines/{id}`
 - `GET /api/brand/reviews`, `POST /api/brand/reviews`, `PATCH /api/brand/reviews/{id}`
 - `GET /api/health`
+- `GET /api/auth/config`, `POST /api/auth/login`, `GET /api/auth/me`
 - `GET /api/projects`
 - `POST /api/projects`
 - `GET /api/projects/{id}`
@@ -142,6 +174,7 @@ Do not claim the public demo is live until these checks pass.
 - `POST /api/projects/{id}/activity` (record a project update)
 - `PATCH /api/items/{id}` (review and update owner, due date, priority and work status)
 - `GET /api/projects/{id}/intelligence`
+- `GET /api/projects/{id}/audit`
 - `POST /api/projects/{id}/ask` with `{ "question": "..." }`
 - `POST /api/projects/{id}/integrations/events` (requires `X-Integration-Token`)
 - `GET /api/projects/{id}/handover`
@@ -167,7 +200,9 @@ Create a workspace named “Campus Event Portal”, upload [`demo-data/synthetic
 ```
 backend/
   app/
+    auth.py
     database.py
+    intelligence.py
     ingestion.py
     knowledge.py
     main.py
