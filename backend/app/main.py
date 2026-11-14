@@ -78,7 +78,10 @@ def auth_login(payload: dict):
 
 @app.get("/api/auth/me")
 def auth_me(request: Request):
-    return {"email": request.state.auth["sub"], "role": request.state.auth.get("role", "viewer")}
+    claims = getattr(request.state, "auth", None)
+    if not claims:
+        raise HTTPException(401, "No active authenticated session")
+    return {"email": claims["sub"], "role": claims.get("role", "viewer")}
 
 
 
