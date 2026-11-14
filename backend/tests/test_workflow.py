@@ -317,3 +317,19 @@ def test_assistant_does_not_answer_from_title_or_url_only(client):
     assert response.status_code == 200
     assert response.json()["confidence"] == "none"
     assert response.json()["matches"] == []
+
+
+def test_assistant_retrieval_builds_context_windows_for_pdf_line_wraps():
+    from app.intelligence import _passages
+
+    extracted = (
+        "ContinuityAI is an AI-assisted project knowledge transfer system\n"
+        "designed to prevent critical knowledge from being lost when team members leave.\n"
+        "It turns project documents into a structured handover pack."
+    )
+    passages = _passages(extracted)
+    assert any(
+        "ContinuityAI is an AI-assisted project knowledge transfer system designed to prevent"
+        in passage
+        for passage in passages
+    )
