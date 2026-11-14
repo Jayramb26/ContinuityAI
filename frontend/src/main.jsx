@@ -53,6 +53,7 @@ function App() {
     if (token) headers.set("Authorization", "Bearer " + token);
     const response = await fetch(API + path, { ...options, headers });
     if (!response.ok) {
+      if (response.status === 401 && authEnabled) { sessionStorage.removeItem("continuityai_access_token"); setAuthToken(""); }
       let data = {};
       try { data = await response.json(); } catch {}
       throw new Error(data.detail || "Request failed. Please try again.");
