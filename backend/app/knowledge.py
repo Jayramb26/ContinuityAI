@@ -55,7 +55,7 @@ async def ai_extract(text: str):
                           "detail": str(x.get("detail", ev)), "evidence": ev,
                           "status": "needs_review", "verified": False,
                           "owner": str(x.get("owner", ""))[:180] if str(x.get("owner", "")) in ev else "",
-                          "due_date": str(x.get("due_date", "")) if re.fullmatch(r"\\d{4}-\\d{2}-\\d{2}", str(x.get("due_date", ""))) and str(x.get("due_date", "")) in ev else "",
+                          "due_date": str(x.get("due_date", "")) if re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(x.get("due_date", ""))) and str(x.get("due_date", "")) in ev else "",
                           "priority": x.get("priority") if x.get("priority") in {"low", "medium", "high", "critical"} else "medium",
                           "work_status": x.get("work_status") if x.get("work_status") in {"open", "in_progress", "blocked", "done"} else "open"})
     return valid[:80]
