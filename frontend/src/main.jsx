@@ -38,6 +38,7 @@ function App() {
   const [assistantQuestion, setAssistantQuestion] = useState("");
   const [assistantAnswer, setAssistantAnswer] = useState(null);
   const [assistantBusy, setAssistantBusy] = useState(false);
+  const [auditLog, setAuditLog] = useState([]);
   const [authChecked, setAuthChecked] = useState(false);
   const [authEnabled, setAuthEnabled] = useState(false);
   const [authToken, setAuthToken] = useState("");
@@ -278,6 +279,13 @@ function App() {
   };
 
 
+
+  const loadAuditLog = async () => {
+    if (!active) return;
+    try { setAuditLog(await req("/projects/" + active + "/audit")); }
+    catch (e) { setError(e.message); }
+  };
+
   const loadIntelligence = async () => {
     if (!active) return;
     try {
@@ -317,7 +325,8 @@ function App() {
     { id: "sources", label: "Sources", icon: FileText },
     { id: "handover", label: "Handover", icon: ShieldCheck },
     { id: "intelligence", label: "Intelligence", icon: Network },
-    { id: "assistant", label: "Ask assistant", icon: MessageCircle }
+    { id: "assistant", label: "Ask assistant", icon: MessageCircle },
+    { id: "audit", label: "Audit log", icon: ClipboardCheck }
   ];
 
 
@@ -468,7 +477,7 @@ function App() {
               </section>
 
               <nav className="tab-bar" aria-label="Project sections">
-                {tabs.map(({ id, label, icon: Icon }) => <button key={id} className={tab === id ? "tab-active" : ""} onClick={() => { setTab(id); if (id === "intelligence") loadIntelligence(); }}><Icon size={16}/>{label}{id === "knowledge" && needsReview > 0 && <span className="tab-count">{needsReview}</span>}</button>)}
+                {tabs.map(({ id, label, icon: Icon }) => <button key={id} className={tab === id ? "tab-active" : ""} onClick={() => { setTab(id); if (id === "intelligence") loadIntelligence(); if (id === "audit") loadAuditLog(); }}><Icon size={16}/>{label}{id === "knowledge" && needsReview > 0 && <span className="tab-count">{needsReview}</span>}</button>)}
               </nav>
 
               {tab === "overview" && (
@@ -542,7 +551,7 @@ function App() {
                     <div className="handover-risk-summary"><div><b>{handover?.unassigned_tasks?.length ?? 0}</b><span>Unassigned tasks</span></div><div><b>{handover?.blocked_items?.length ?? 0}</b><span>Blocked items</span></div><div><b>{handover?.overdue_tasks?.length ?? 0}</b><span>Overdue tasks</span></div></div><h3 className="subsection-title">Unfinished work and ownership</h3>{(handover?.open_tasks || []).length ? handover.open_tasks.map(item => <div className="gap-row" key={"task-" + item.id}><ListTodo size={16}/><div><b>{item.title}</b><small>{item.owner || "UNASSIGNED"} · {item.work_status.replaceAll("_", " ")} · {item.due_date || "No due date"}</small></div><button onClick={() => setTab("knowledge")}>Update</button></div>) : <div className="inline-empty"><CheckCircle2 size={18}/><span>No unfinished tasks recorded.</span></div>}<h3 className="subsection-title">Items requiring attention</h3>
                     {(handover?.gaps || []).length ? handover.gaps.map(item => <div className="gap-row" key={item.id}><AlertTriangle size={16}/><div><b>{item.title}</b><small>{item.category} · {item.status.replaceAll("_", " ")}</small></div><button onClick={() => setTab("knowledge")}>Review</button></div>) : <div className="inline-empty"><CheckCircle2 size={19}/><span>No unresolved review items in this handover.</span></div>}
                   </section>
-                  <section className="surface-card handover-side"><span className="eyebrow">PROJECT ACTIVITY</span><h2>Recent history</h2>{(detail?.activity || []).slice(0,8).map(event => <div className="activity-entry" key={event.id}><span className="activity-dot"/><div><b>{event.message}</b><small>{new Date(event.created_at).toLocaleString()}</small></div></div>)}{!(detail?.activity || []).length && <p className="section-subtitle">Activity will appear as your team adds sources and updates work.</p>}<div className="activity-add"><button className="secondary-button" type="button" onClick={async () => { const message = window.prompt("Record a project update, discussion or decision context"); if (message?.trim()) { try { await req("/projects/" + active + "/activity", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message, event_type: "team_update" }) }); await select(active); setTab("handover"); } catch (e) { setError(e.message); } } }}>+ Record activity</button></div>
+                  <section className="surface-card handover-side"><span className="eyebrow">PROJECT ACTIVITY</span><h2>Recent history</h2>{(detail?.activity || []).slice(0,8).map(event => <div className="activity-entry" key={event.id}><span className="activity-dot"/><div><b>{event.message}</b><small>{event.actor || "demo-owner"} · {new Date(event.created_at).toLocaleString()}</small></div></div>)}{!(detail?.activity || []).length && <p className="section-subtitle">Activity will appear as your team adds sources and updates work.</p>}<div className="activity-add"><button className="secondary-button" type="button" onClick={async () => { const message = window.prompt("Record a project update, discussion or decision context"); if (message?.trim()) { try { await req("/projects/" + active + "/activity", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message, event_type: "team_update" }) }); await select(active); setTab("handover"); } catch (e) { setError(e.message); } } }}>+ Record activity</button></div>
                     <span className="eyebrow">RECOMMENDED CHECKLIST</span><h2>Before you hand over</h2>
                     {(handover?.next_steps || []).map((step, index) => <div className="checklist-row" key={index}><span>{index + 1}</span><p>{step}</p></div>)}
                     <div className="handover-note"><ShieldCheck size={17}/><p>Only approve information after checking its source evidence. A high score does not replace human review.</p></div>
@@ -570,6 +579,14 @@ function App() {
                 </section>
               )}
 
+
+              {tab === "audit" && (
+                <section className="surface-card knowledge-card">
+                  <div className="section-heading"><div><span className="eyebrow">AUDITABLE KNOWLEDGE HISTORY</span><h2>Workspace activity log</h2><p className="section-subtitle">Timestamped record of workspace creation, uploads, knowledge edits, review decisions and integration events.</p></div><button className="secondary-button" type="button" onClick={loadAuditLog}><RefreshCw size={14}/> Refresh log</button></div>
+                  {auditLog.length ? auditLog.map(event => <article className="activity-entry audit-entry" key={event.id}><span className="activity-dot"/><div><b>{event.message}</b><small>{event.actor || "demo-owner"} · {event.event_type} · {new Date(event.created_at).toLocaleString()}</small></div></article>) : <div className="inline-empty">No activity has been recorded yet.</div>}
+                  <p className="brand-disclaimer">The public demo uses one shared demo-owner identity. This log records actions and timestamps but does not provide individual attribution across separate users.</p>
+                </section>
+              )}
               {tab === "assistant" && (
                 <section className="surface-card knowledge-card">
                   <div className="section-heading"><div><span className="eyebrow">SOURCE-BACKED HANDOVER Q&A</span><h2>Ask your project knowledge</h2><p className="section-subtitle">Answers are retrieved from uploaded sources and recorded knowledge. Unsupported questions return no answer rather than a guess.</p></div><MessageCircle size={22}/></div>
