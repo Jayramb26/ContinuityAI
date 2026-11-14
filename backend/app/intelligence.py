@@ -98,11 +98,21 @@ def _is_noise_passage(value, filename=""):
     return False
 
 def _passages(content):
-    """Split extracted text into sentence-sized passages while tolerating PDF line wraps."""
-    normalized = (content or "").replace("\r", "\n")
-    # First split on sentence endings; newlines are also useful boundaries for PDF text.
-    pieces = re.split(r"(?<=[.!?])\s+|\n+", normalized)
-    return [re.sub(r"\s+", " ", piece).strip() for piece in pieces if piece.strip()]
+    """Build readable context windows; PDF extraction often breaks sentences across lines."""
+    # A single newline in extracted PDF text is usually a visual line-wrap, not a paragraph.
+    normalized = re.sub(r"\s+", " ", (content or "")).strip()
+    sentences = [
+        re.sub(r"\s+", " ", piece).strip()
+        for piece in re.split(r"(?<=[.!?])\s+", normalized)
+        if piece.strip()
+    ]
+    # Include adjacent sentences so sentence fragments at PDF boundaries gain context.
+    windows = list(sentences)
+    windows.extend(
+        sentences[i] + " " + sentences[i + 1]
+        for i in range(len(sentences) - 1)
+    )
+    return windows
 
 def answer_project_question(question, documents, items):
     """Retrieve relevant, non-duplicated source excerpts; do not guess when evidence is weak."""
@@ -122,6 +132,13 @@ def answer_project_question(question, documents, items):
         key = re.sub(r"[^a-z0-9]+", " ", excerpt.lower()).strip()
         if not key or key in seen:
             return
+        candidate_terms = terms(key)
+        # Suppress near-identical excerpts from multiple versions of the same PDF.
+        for previous in matches:
+            previous_terms = terms(previous.get("excerpt", ""))
+            union = candidate_terms | previous_terms
+            if union and len(candidate_terms & previous_terms) / len(union) >= 0.78:
+                return
         seen.add(key)
         candidate["excerpt"] = excerpt[:700]
         matches.append(candidate)
@@ -175,7 +192,7 @@ def answer_project_question(question, documents, items):
             })
 
     matches.sort(key=lambda x: (x["score"], x["approved"], len(x["excerpt"])), reverse=True)
-    top = matches[:5]
+    top = matches[:3]
     # A one-word match such as only "ContinuityAI" is not enough to support a useful answer.
     minimum_score = 5 if len(q_terms) == 1 else 3
     if not top or top[0]["score"] < minimum_score:
