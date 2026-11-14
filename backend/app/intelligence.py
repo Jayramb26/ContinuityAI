@@ -116,11 +116,11 @@ def _passages(content):
 
 def _definition_focus(value, subject="continuityai"):
     """Return a sentence that directly defines the product, when one exists."""
-    sentences = [re.sub(r"\\s+", " ", part).strip() for part in re.split(r"(?<=[.!?])\\s+", value or "") if part.strip()]
+    sentences = [re.sub(r"\s+", " ", part).strip() for part in re.split(r"(?<=[.!?])\s+", value or "") if part.strip()]
     for sentence in sentences:
-        if (re.search(rf"\\b{re.escape(subject)}\\b", sentence, re.I)
-                and re.search(r"\\b(?:is|are)\\s+(?:an?\\s+|the\\s+)?", sentence, re.I)
-                and re.search(r"\\b(?:system|platform|software|tool|application|service)\\b", sentence, re.I)):
+        if (re.search(rf"\b{re.escape(subject)}\b", sentence, re.I)
+                and re.search(r"\b(?:is|are)\s+(?:an?\s+|the\s+)?", sentence, re.I)
+                and re.search(r"\b(?:system|platform|software|tool|application|service)\b", sentence, re.I)):
             return sentence[:700]
     return ""
 
@@ -197,9 +197,9 @@ def answer_project_question(question, documents, items):
                     score += 3
                 if any(cue in lowered for cue in DEFINITION_CUES):
                     score += 5
-                if re.search(r"\\b(ingests|captures|organises|organizes|connects|tracks|transforms|turns|helps)\\b", lowered):
+                if re.search(r"\b(ingests|captures|organises|organizes|connects|tracks|transforms|turns|helps)\b", lowered):
                     score += 2
-                if re.search(r"\\b(system flow|architecture diagram|frontend layer|backend & storage|ai pipeline|figure \\d)\\b", lowered):
+                if re.search(r"\b(system flow|architecture diagram|frontend layer|backend & storage|ai pipeline|figure \d)\b", lowered):
                     score -= 8
             add_match({
                 "kind": "source_excerpt", "source_id": doc["id"], "filename": filename,
