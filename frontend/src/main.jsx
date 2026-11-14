@@ -38,10 +38,19 @@ function App() {
   const [assistantQuestion, setAssistantQuestion] = useState("");
   const [assistantAnswer, setAssistantAnswer] = useState(null);
   const [assistantBusy, setAssistantBusy] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [authEnabled, setAuthEnabled] = useState(false);
+  const [authToken, setAuthToken] = useState("");
+  const [loginEmail, setLoginEmail] = useState("demo@continuityai.app");
+  const [loginPassword, setLoginPassword] = useState("ContinuityDemo2026!");
+  const [loginError, setLoginError] = useState("");
   const brandFileInput = useRef(null);
 
   const req = async (path, options = {}) => {
-    const response = await fetch(API + path, options);
+    const headers = new Headers(options.headers || {});
+    const token = authToken || sessionStorage.getItem("continuityai_access_token");
+    if (token) headers.set("Authorization", "Bearer " + token);
+    const response = await fetch(API + path, { ...options, headers });
     if (!response.ok) {
       let data = {};
       try { data = await response.json(); } catch {}
@@ -75,7 +84,49 @@ function App() {
     }
   };
 
-  useEffect(() => { refresh(null); }, []);
+  useEffect(() => {
+    const boot = async () => {
+      try {
+        const response = await fetch(API + "/auth/config");
+        const config = await response.json();
+        setAuthEnabled(Boolean(config.auth_enabled));
+        if (config.auth_enabled) {
+          const saved = sessionStorage.getItem("continuityai_access_token");
+          if (saved) {
+            const check = await fetch(API + "/auth/me", { headers: { Authorization: "Bearer " + saved } });
+            if (check.ok) {
+              setAuthToken(saved);
+              await refresh(null);
+            } else sessionStorage.removeItem("continuityai_access_token");
+          }
+        } else await refresh(null);
+      } catch (e) { setError("Could not connect to the ContinuityAI API. " + e.message); }
+      finally { setAuthChecked(true); }
+    };
+    boot();
+  }, []);
+
+
+  const signIn = async (event) => {
+    event.preventDefault(); setLoginError("");
+    try {
+      const response = await fetch(API + "/auth/login", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: loginEmail, password: loginPassword })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || "Sign in failed");
+      sessionStorage.setItem("continuityai_access_token", data.access_token);
+      setAuthToken(data.access_token);
+      await refresh(null);
+    } catch (e) { setLoginError(e.message); }
+  };
+
+  const signOut = () => {
+    sessionStorage.removeItem("continuityai_access_token");
+    setAuthToken(""); setProjects([]); setActive(null); setDetail(null); setHandover(null);
+    setPage("dashboard"); setTab("overview");
+  };
 
   const loadBrand = async () => {
     const [guidelines, reviews] = await Promise.all([req("/brand/guidelines"), req("/brand/reviews")]);
@@ -269,6 +320,26 @@ function App() {
     { id: "assistant", label: "Ask assistant", icon: MessageCircle }
   ];
 
+
+  if (!authChecked) return <div className="auth-screen"><div className="auth-card"><div className="brand-mark"><BrainCircuit size={24}/></div><h1>ContinuityAI</h1><p>Connecting to your project workspace…</p></div></div>;
+  if (authEnabled && !authToken) return (
+    <div className="auth-screen">
+      <section className="auth-card">
+        <div className="brand-mark"><BrainCircuit size={24}/></div>
+        <span className="eyebrow">CODE TITANS · PROJECT KNOWLEDGE HUB</span>
+        <h1>Welcome back</h1>
+        <p>Sign in to access the workspace and its project knowledge.</p>
+        {loginError && <div className="toast toast-error">{loginError}</div>}
+        <form className="auth-form" onSubmit={signIn}>
+          <label>Email<input type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} required autoComplete="username"/></label>
+          <label>Password<input type="password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} required autoComplete="current-password"/></label>
+          <button className="primary-button" type="submit">Sign in to demo</button>
+        </form>
+        <div className="demo-credentials"><b>Shared judge demo account</b><span>Email: demo@continuityai.app</span><span>Password: ContinuityDemo2026!</span><small>Use only with synthetic demo data. The demo account is shared by evaluators.</small></div>
+      </section>
+    </div>
+  );
+
   return (
     <div className="app-shell">
       <aside className={"sidebar " + (mobileNav ? "sidebar-open" : "")}>
@@ -310,7 +381,7 @@ function App() {
             <span className="crumb-muted">CONTINUITYAI</span><span className="crumb-slash">/</span><b>{page === "dashboard" ? "Dashboard" : page === "brand" ? "Brand governance" : (detail?.name || "Project workspace")}</b>
           </div>
           <div className="topbar-actions">
-            <span className="secure-label"><ShieldCheck size={14}/> Evidence-first workflow</span>
+            <span className="secure-label"><ShieldCheck size={14}/> Evidence-first workflow</span>{authEnabled && <button className="small-button" type="button" onClick={signOut}>Sign out</button>}
             <button className="icon-button" onClick={() => refresh(active)} title="Refresh workspace"><RefreshCw size={16}/></button>
           </div>
         </header>
