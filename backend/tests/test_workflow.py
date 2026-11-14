@@ -9,6 +9,9 @@ from fastapi.testclient import TestClient
 
 TEST_DB = Path(__file__).parent / "test_continuityai.db"
 os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB.as_posix()}"
+os.environ["AUTH_SECRET"] = "test-only-secret"
+os.environ["DEMO_EMAIL"] = "demo@continuityai.app"
+os.environ["DEMO_PASSWORD"] = "ContinuityDemo2026!"
 from app.main import app
 from app.database import Base, engine
 
@@ -17,6 +20,9 @@ def client():
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     with TestClient(app) as test_client:
+        login = test_client.post("/api/auth/login", json={"email": "demo@continuityai.app", "password": "ContinuityDemo2026!"})
+        assert login.status_code == 200, login.text
+        test_client.headers.update({"Authorization": "Bearer " + login.json()["access_token"]})
         yield test_client
     Base.metadata.drop_all(bind=engine)
 
@@ -245,3 +251,15 @@ def test_integration_event_requires_token_and_records_reviewable_item(client, mo
     project = client.get(f"/api/projects/{project_id}").json()
     assert any(item["title"] == payload["title"] and item["status"] == "needs_review" for item in project["items"])
     assert any("[github]" in event["message"] for event in project["activity"])
+
+
+def test_demo_authentication_protects_workspace_routes():
+    with TestClient(app) as anonymous:
+        assert anonymous.get("/api/auth/config").json()["auth_enabled"] is True
+        assert anonymous.get("/api/projects").status_code == 401
+        bad = anonymous.post("/api/auth/login", json={"email": "demo@continuityai.app", "password": "wrong"})
+        assert bad.status_code == 401
+        good = anonymous.post("/api/auth/login", json={"email": "demo@continuityai.app", "password": "ContinuityDemo2026!"})
+        assert good.status_code == 200
+        token = good.json()["access_token"]
+        assert anonymous.get("/api/auth/me", headers={"Authorization": "Bearer " + token}).json()["role"] == "owner"
