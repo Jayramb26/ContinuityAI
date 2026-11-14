@@ -267,3 +267,53 @@ def test_demo_authentication_protects_workspace_routes():
         assert good.status_code == 200
         token = good.json()["access_token"]
         assert anonymous.get("/api/auth/me", headers={"Authorization": "Bearer " + token}).json()["role"] == "owner"
+
+
+def test_assistant_prioritizes_product_explanation_over_pdf_metadata(client):
+    project_id = create_project(client)
+    source = (
+        "ContinuityAI — Round 2 Working MVP\\n"
+        "https://continuityai-web.onrender.com/\\n"
+        "CONTINUITYAI DEPLOYED IMPLEMENTATION\\n"
+        "ContinuityAI is an evidence-first project knowledge handover platform that turns "
+        "authorised project documents into decisions, tasks, risks, owners and open questions "
+        "so another teammate can continue work without chasing the previous owner.\\n"
+        "ContinuityAI — Round 2 Working MVP\\n"
+    )
+    upload = client.post(
+        f"/api/projects/{project_id}/upload",
+        files={"file": ("round2-submission.pdf.txt", source.encode(), "text/plain")},
+    )
+    assert upload.status_code == 200, upload.text
+
+    response = client.post(
+        f"/api/projects/{project_id}/ask",
+        json={"question": "What is ContinuityAI?"},
+    )
+    assert response.status_code == 200
+    result = response.json()
+    assert result["confidence"] in {"medium", "high"}
+    assert "evidence-first project knowledge handover platform" in result["answer"]
+    assert "https://continuityai-web.onrender.com" not in result["answer"]
+    assert len(result["matches"]) == 1
+
+
+def test_assistant_does_not_answer_from_title_or_url_only(client):
+    project_id = create_project(client)
+    source = (
+        "ContinuityAI — Round 2 Working MVP\\n"
+        "https://continuityai-web.onrender.com/\\n"
+        "CONTINUITYAI DEPLOYED IMPLEMENTATION\\n"
+    )
+    upload = client.post(
+        f"/api/projects/{project_id}/upload",
+        files={"file": ("metadata-only.txt", source.encode(), "text/plain")},
+    )
+    assert upload.status_code == 200, upload.text
+    response = client.post(
+        f"/api/projects/{project_id}/ask",
+        json={"question": "What is ContinuityAI?"},
+    )
+    assert response.status_code == 200
+    assert response.json()["confidence"] == "none"
+    assert response.json()["matches"] == []
