@@ -184,9 +184,9 @@ def test_brand_governance_rule_check_and_human_decision(client):
 def test_intelligence_and_grounded_project_assistant(client):
     project_id = create_project(client)
     source = (
-        "Decision: We will use React for the dashboard interface.\\n"
-        "Decision: We will not use React for the dashboard interface.\\n"
-        "Task: Assigned to Jayram, finish deployment checklist depends on database migration.\\n"
+        "Decision: We will use React for the dashboard interface.\n"
+        "Decision: We will not use React for the dashboard interface.\n"
+        "Task: Assigned to Jayram, finish deployment checklist depends on database migration.\n"
         "Risk: Deployment may fail if environment variables are missing."
     )
     uploaded = client.post(
