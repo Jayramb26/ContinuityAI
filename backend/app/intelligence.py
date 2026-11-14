@@ -33,7 +33,7 @@ def analyze_project(items):
     conflicts = []
     for item in rows:
         text = " ".join([item.get("title", ""), item.get("detail", ""), item.get("evidence", "")])
-        match = re.search(r"\\b(depends on|blocked by|requires|waiting for|after)\\b([^.;\\n]{3,180})", text, re.I)
+        match = re.search(r"\b(depends on|blocked by|requires|waiting for|after)\b([^.;\n]{3,180})", text, re.I)
         if match:
             dependencies.append({
                 "item_id": item["id"], "title": item["title"],
@@ -55,12 +55,12 @@ def analyze_project(items):
     for index, left in enumerate(decisions):
         left_text = " ".join([left.get("title", ""), left.get("detail", ""), left.get("evidence", "")])
         left_terms = terms(left_text)
-        left_negative = bool(re.search(r"\\b(not|never|no longer|instead of|rejected|cancelled|canceled|won't|cannot)\\b", left_text, re.I))
+        left_negative = bool(re.search(r"\b(not|never|no longer|instead of|rejected|cancelled|canceled|won't|cannot)\b", left_text, re.I))
         for right in decisions[index + 1:]:
             right_text = " ".join([right.get("title", ""), right.get("detail", ""), right.get("evidence", "")])
             right_terms = terms(right_text)
             overlap = sorted(left_terms & right_terms)
-            right_negative = bool(re.search(r"\\b(not|never|no longer|instead of|rejected|cancelled|canceled|won't|cannot)\\b", right_text, re.I))
+            right_negative = bool(re.search(r"\b(not|never|no longer|instead of|rejected|cancelled|canceled|won't|cannot)\b", right_text, re.I))
             if len(overlap) >= 2 and left_negative != right_negative:
                 conflicts.append({
                     "item_ids": [left["id"], right["id"]],
@@ -80,12 +80,12 @@ def analyze_project(items):
 
 def _is_noise_passage(value, filename=""):
     """Reject PDF furniture, URLs, repeated filenames and heading-like fragments."""
-    text = re.sub(r"\\s+", " ", (value or "")).strip()
+    text = re.sub(r"\s+", " ", (value or "")).strip()
     if len(text) < 45 or len(text.split()) < 7:
         return True
-    if re.search(r"https?://|www\\.", text, re.I):
+    if re.search(r"https?://|www\.", text, re.I):
         return True
-    if re.search(r"\\b\\S+\\.(pdf|docx?|pptx?)\\b", text, re.I):
+    if re.search(r"\b\S+\.(pdf|docx?|pptx?)\b", text, re.I):
         return True
     if filename and text.casefold() == filename.casefold():
         return True
@@ -93,16 +93,16 @@ def _is_noise_passage(value, filename=""):
     if letters and letters.isupper():
         return True
     # Standalone repeated report titles and navigation labels are not answers.
-    if re.match(r"^(source excerpt|contents|table of contents|continuityai\\s*[—-])", text, re.I):
+    if re.match(r"^(source excerpt|contents|table of contents|continuityai\s*[—-])", text, re.I):
         return True
     return False
 
 def _passages(content):
     """Split extracted text into sentence-sized passages while tolerating PDF line wraps."""
-    normalized = (content or "").replace("\\r", "\\n")
+    normalized = (content or "").replace("\r", "\n")
     # First split on sentence endings; newlines are also useful boundaries for PDF text.
-    pieces = re.split(r"(?<=[.!?])\\s+|\\n+", normalized)
-    return [re.sub(r"\\s+", " ", piece).strip() for piece in pieces if piece.strip()]
+    pieces = re.split(r"(?<=[.!?])\s+|\n+", normalized)
+    return [re.sub(r"\s+", " ", piece).strip() for piece in pieces if piece.strip()]
 
 def answer_project_question(question, documents, items):
     """Retrieve relevant, non-duplicated source excerpts; do not guess when evidence is weak."""
@@ -111,14 +111,14 @@ def answer_project_question(question, documents, items):
         return {"answer": "Please ask a more specific question using project terms.", "matches": [], "confidence": "none"}
 
     lowered_question = (question or "").lower()
-    definition_intent = bool(re.search(r"\\b(what is|what are|define|describe|explain)\\b", lowered_question))
+    definition_intent = bool(re.search(r"\b(what is|what are|define|describe|explain)\b", lowered_question))
     # For definition questions, the named subject is usually the first meaningful query term.
     subject_terms = set(q_terms)
     matches = []
     seen = set()
 
     def add_match(candidate):
-        excerpt = re.sub(r"\\s+", " ", candidate.get("excerpt", "")).strip()
+        excerpt = re.sub(r"\s+", " ", candidate.get("excerpt", "")).strip()
         key = re.sub(r"[^a-z0-9]+", " ", excerpt.lower()).strip()
         if not key or key in seen:
             return
@@ -165,7 +165,7 @@ def answer_project_question(question, documents, items):
                     score += 3
                 if any(cue in lowered for cue in DEFINITION_CUES):
                     score += 5
-                if re.search(r"\\b(ingests|captures|organises|organizes|connects|tracks|transforms|turns|helps)\\b", lowered):
+                if re.search(r"\b(ingests|captures|organises|organizes|connects|tracks|transforms|turns|helps)\b", lowered):
                     score += 2
             add_match({
                 "kind": "source_excerpt", "source_id": doc["id"], "filename": filename,
