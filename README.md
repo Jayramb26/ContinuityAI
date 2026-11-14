@@ -90,6 +90,10 @@ Set `VITE_API_URL` in `frontend/.env` if the API is hosted elsewhere, for exampl
 VITE_API_URL=http://localhost:8000/api
 ```
 
+## Demo authentication
+
+The Render Blueprint generates `AUTH_SECRET` and configures the shared judge demo account. If deploying manually, set all three backend variables: `AUTH_SECRET` (a long random secret), `DEMO_EMAIL=demo@continuityai.app`, and `DEMO_PASSWORD=ContinuityDemo2026!`. The frontend displays these shared credentials on the sign-in page. This demo account is intended only for synthetic data and is not a substitute for multi-user identity and workspace-level permissions.
+
 ## Optional LLM extraction
 
 The application works without an API key using rule-based extraction. To enable an OpenAI-compatible endpoint, copy `backend/.env.example` to `backend/.env` and configure:
@@ -115,7 +119,7 @@ Do not claim the public demo is live until these checks pass.
 
 ## Important demo and security limitations
 
-- The app has no authentication, authorisation, workspace membership or role-based access. Do not put confidential or personal project information in a public deployment.
+- The Render Blueprint enables a single shared demo login using a generated API signing secret. The visible judge credentials are `demo@continuityai.app` / `ContinuityDemo2026!`. This is a shared demo gate, not production identity management: user provisioning, per-workspace RBAC, named individual attribution, and individual session revocation are not implemented. Do not put confidential or personal project information in a public deployment.
 - The Render Blueprint uses SQLite by default. Free service storage may be ephemeral, so data can be lost on restart or redeploy. Use persistent PostgreSQL and appropriate file storage for a durable deployment.
 - Uploads are limited to 10 MB per file. Supported formats are PDF, DOCX, TXT and Markdown.
 - Rule-based extraction searches for explicit decision/action/risk/question cues and can miss implicit context. Owner and due-date extraction is conservative and only attempts to capture explicitly written names and ISO dates; review every candidate.
