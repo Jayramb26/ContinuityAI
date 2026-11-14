@@ -179,3 +179,69 @@ def test_brand_governance_rule_check_and_human_decision(client):
     assert decision.status_code == 200, decision.text
     assert decision.json()["status"] == "changes_requested"
     assert "verify the founding claim" in decision.json()["decision_note"]
+
+
+def test_intelligence_and_grounded_project_assistant(client):
+    project_id = create_project(client)
+    source = (
+        "Decision: We will use React for the dashboard interface.\\n"
+        "Decision: We will not use React for the dashboard interface.\\n"
+        "Task: Finish deployment checklist depends on database migration.\\n"
+        "Risk: Deployment may fail if environment variables are missing."
+    )
+    uploaded = client.post(
+        f"/api/projects/{project_id}/upload",
+        files={"file": ("notes.txt", source.encode(), "text/plain")},
+    )
+    assert uploaded.status_code == 200, uploaded.text
+
+    intelligence = client.get(f"/api/projects/{project_id}/intelligence")
+    assert intelligence.status_code == 200
+    report = intelligence.json()
+    assert report["counts"]["possible_conflicts"] >= 1
+    assert report["counts"]["dependencies"] >= 1
+    assert report["counts"]["knowledge_gaps"] >= 1
+
+    question = client.post(
+        f"/api/projects/{project_id}/ask",
+        json={"question": "What does the source say about React dashboard?"},
+    )
+    assert question.status_code == 200
+    answer = question.json()
+    assert answer["matches"]
+    assert "React" in answer["answer"]
+    assert answer["confidence"] in {"medium", "high"}
+
+    missing = client.post(f"/api/projects/{project_id}/ask", json={"question": "Who owns the moon base?"})
+    assert missing.status_code == 200
+    assert missing.json()["confidence"] == "none"
+
+
+def test_integration_event_requires_token_and_records_reviewable_item(client, monkeypatch):
+    project_id = create_project(client)
+    payload = {
+        "provider": "github",
+        "event_type": "issue_opened",
+        "title": "Document release checklist",
+        "body": "Task: Document release checklist before launch.",
+        "url": "https://github.com/example/repo/issues/7",
+        "actor": "Jayram",
+        "category": "task",
+    }
+    disabled = client.post(f"/api/projects/{project_id}/integrations/events", json=payload)
+    assert disabled.status_code == 503
+
+    monkeypatch.setenv("INTEGRATION_WEBHOOK_TOKEN", "test-secret")
+    unauthorized = client.post(f"/api/projects/{project_id}/integrations/events", json=payload)
+    assert unauthorized.status_code == 401
+
+    accepted = client.post(
+        f"/api/projects/{project_id}/integrations/events",
+        json=payload,
+        headers={"X-Integration-Token": "test-secret"},
+    )
+    assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["created_item_id"] is not None
+    project = client.get(f"/api/projects/{project_id}").json()
+    assert any(item["title"] == payload["title"] and item["status"] == "needs_review" for item in project["items"])
+    assert any("[github]" in event["message"] for event in project["activity"])
