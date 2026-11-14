@@ -22,6 +22,37 @@ A separate Brand Governance area is available from the sidebar. Add explicit app
 
 The checks are deliberately transparent: required/prohibited terms and asset identifiers use exact case-insensitive phrase matching; approved facts are checked for exact approved wording and missing matches are marked for verification, not declared false. Tone guidance is always surfaced for human review. Potential absolute claims (such as guaranteed or risk-free) are flagged for substantiation. This is a review assistant, not legal advice, semantic fact verification or an automatic publication gate.
 
+## Round 3 improvements
+
+The current branch adds three bounded, testable improvements:
+
+1. **Continuous knowledge capture — authenticated event intake.** A normalized webhook endpoint can receive events from a GitHub/Slack/project-management adapter, write them to the project activity timeline, and optionally create a human-review candidate. Configure `INTEGRATION_WEBHOOK_TOKEN` on the API and send it in the `X-Integration-Token` header. This is an adapter endpoint, not a turnkey OAuth integration; provider-specific webhook mapping and secret configuration are still required.
+2. **Knowledge intelligence.** The Intelligence tab surfaces explicit dependency phrases, possible decision conflicts based on shared terms plus opposing negation, and gaps such as tasks without owners/due dates or unreviewed candidates. It is deterministic and explainable; flags require human review and are not semantic proof.
+3. **Handover Q&A.** The Ask assistant tab retrieves relevant excerpts from uploaded documents and knowledge items, prioritises approved items, displays source IDs and review state, and says when no matching source is found. It is retrieval-based, not a generative AI answer engine.
+
+The AI extraction provider remains optional. Without provider credentials, the application uses its rule-based extractor.
+
+## Integration event example
+
+After setting a strong `INTEGRATION_WEBHOOK_TOKEN` in the backend environment, a trusted adapter can send:
+
+```bash
+curl -X POST "$API_URL/api/projects/PROJECT_ID/integrations/events" \
+  -H "Content-Type: application/json" \
+  -H "X-Integration-Token: $INTEGRATION_WEBHOOK_TOKEN" \
+  -d '{
+    "provider": "github",
+    "event_type": "issue_opened",
+    "title": "Complete release checklist",
+    "body": "Task: Complete release checklist before launch.",
+    "url": "https://github.com/example/repo/issues/7",
+    "actor": "Project owner",
+    "category": "task"
+  }'
+```
+
+Events are recorded in the activity timeline. When `category` is one of decision, task, risk or question, a candidate is created with `needs_review` status; it is never auto-approved. Do not expose the integration token in browser code or commit it to Git.
+
 ## Technology
 
 - Frontend: React, Vite, JavaScript, CSS and Lucide icons.
@@ -89,10 +120,10 @@ Do not claim the public demo is live until these checks pass.
 - Uploads are limited to 10 MB per file. Supported formats are PDF, DOCX, TXT and Markdown.
 - Rule-based extraction searches for explicit decision/action/risk/question cues and can miss implicit context. Owner and due-date extraction is conservative and only attempts to capture explicitly written names and ISO dates; review every candidate.
 - LLM extraction is optional. If enabled, data is sent to the configured provider; review its data-handling terms before use.
-- Evidence substring validation does not perform semantic entailment or contradiction detection.
+- Evidence substring validation does not perform semantic entailment. The Intelligence tab flags only explicit rule-based dependency cues and narrow possible contradictions; it can miss implicit relationships and can produce false positives.
 - The readiness percentage is an illustrative checklist indicator, not a validated project-health score.
-- The activity timeline records actions performed in ContinuityAI; it is not yet a live audit feed from external tools. Authentication, malware scanning, controlled sharing and real-time collaboration are not implemented.
-- GitHub, Slack, Teams and email ingestion are not implemented.
+- The activity timeline records actions performed in ContinuityAI and normalized events posted by a trusted adapter; it is not a turnkey live audit feed from external tools. Authentication, malware scanning, controlled sharing and real-time collaboration are not implemented.
+- Provider-specific OAuth, direct GitHub/Slack/Teams/email integrations, and automated webhook signature verification are not implemented. The authenticated normalized-event intake is a connector adapter endpoint; it requires a server-side shared secret.
 
 ## API endpoints
 
@@ -106,6 +137,9 @@ Do not claim the public demo is live until these checks pass.
 - `POST /api/projects/{id}/items` (manually record a decision, task, risk or question)
 - `POST /api/projects/{id}/activity` (record a project update)
 - `PATCH /api/items/{id}` (review and update owner, due date, priority and work status)
+- `GET /api/projects/{id}/intelligence`
+- `POST /api/projects/{id}/ask` with `{ "question": "..." }`
+- `POST /api/projects/{id}/integrations/events` (requires `X-Integration-Token`)
 - `GET /api/projects/{id}/handover`
 - `GET /api/projects/{id}/handover.md`
 
