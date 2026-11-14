@@ -159,6 +159,10 @@ def test_owner_tracking_activity_and_handover_details(client):
     assert handover["tasks"][0]["work_status"] == "in_progress"
     assert len(handover["blocked_items"]) == 0
 
+    audit = client.get(f"/api/projects/{project_id}/audit")
+    assert audit.status_code == 200
+    assert any(event["actor"] == "demo-owner" for event in audit.json())
+
     exported = client.get(f"/api/projects/{project_id}/handover.md")
     assert exported.status_code == 200
     assert "Mira" in exported.text
