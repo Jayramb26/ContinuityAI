@@ -12,6 +12,7 @@ STOP = {
     "their", "there", "these", "they", "this", "those", "through", "under",
     "until", "using", "very", "what", "when", "where", "which", "while",
     "will", "with", "would", "your", "project", "task", "decision", "risk",
+    "the", "and", "for", "are", "but", "can", "who", "own", "owns", "does",
 }
 
 def terms(value):
