@@ -98,9 +98,22 @@ def _is_noise_passage(value, filename=""):
     return False
 
 def _passages(content):
-    """Build readable context windows; PDF extraction often breaks sentences across lines."""
-    # A single newline in extracted PDF text is usually a visual line-wrap, not a paragraph.
-    normalized = re.sub(r"\s+", " ", (content or "")).strip()
+    """Build readable context windows after removing PDF metadata and visual furniture."""
+    raw = (content or "").replace("\\n", "\n")
+    # Remove standalone metadata before joining PDF visual lines. Otherwise one URL can
+    # cause _is_noise_passage to reject an entire paragraph containing the real answer.
+    useful_lines = []
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line or re.search(r"https?://|www\.", line, re.I):
+            continue
+        if re.match(r"^continuityai\s*[—-]\s*round \d+.*$", line, re.I):
+            continue
+        letters = re.sub(r"[^A-Za-z]", "", line)
+        if letters and letters.isupper() and len(line.split()) <= 12:
+            continue
+        useful_lines.append(line)
+    normalized = re.sub(r"\s+", " ", " ".join(useful_lines)).strip()
     sentences = [
         re.sub(r"\s+", " ", piece).strip()
         for piece in re.split(r"(?<=[.!?])\s+", normalized)
@@ -113,6 +126,15 @@ def _passages(content):
         for i in range(len(sentences) - 1)
     )
     return windows
+def _definition_focus(value, subject="continuityai"):
+    """Return a sentence that directly defines the product, when one exists."""
+    sentences = [re.sub(r"\s+", " ", part).strip() for part in re.split(r"(?<=[.!?])\s+", value or "") if part.strip()]
+    for sentence in sentences:
+        if (re.search(rf"\b{re.escape(subject)}\b", sentence, re.I)
+                and re.search(r"\b(?:is|are)\s+(?:an?\s+|the\s+)?", sentence, re.I)
+                and re.search(r"\b(?:system|platform|software|tool|application|service)\b", sentence, re.I)):
+            return sentence[:700]
+    return ""
 
 def answer_project_question(question, documents, items):
     """Retrieve relevant, non-duplicated source excerpts; do not guess when evidence is weak."""
@@ -176,17 +198,24 @@ def answer_project_question(question, documents, items):
                 continue
             lowered = " " + excerpt.lower() + " "
             score = len(overlap) * 3
+            selected_excerpt = excerpt
             if definition_intent:
-                # A definition/overview passage about the named product outranks a title mention.
+                # Prefer a direct product definition over architecture diagrams or generic mentions.
+                direct_definition = _definition_focus(excerpt)
+                if direct_definition:
+                    selected_excerpt = direct_definition
+                    score += 25
                 if any(term in terms(excerpt) for term in subject_terms):
                     score += 3
                 if any(cue in lowered for cue in DEFINITION_CUES):
                     score += 5
                 if re.search(r"\b(ingests|captures|organises|organizes|connects|tracks|transforms|turns|helps)\b", lowered):
                     score += 2
+                if re.search(r"\b(system flow|architecture diagram|frontend layer|backend & storage|ai pipeline|figure \d)\b", lowered):
+                    score -= 8
             add_match({
                 "kind": "source_excerpt", "source_id": doc["id"], "filename": filename,
-                "title": filename, "excerpt": excerpt,
+                "title": filename, "excerpt": selected_excerpt,
                 "review_status": "source_unreviewed", "matched_terms": sorted(overlap),
                 "score": score, "approved": False,
             })
