@@ -28,6 +28,7 @@ class ActivityEvent(Base):
     item_id: Mapped[int | None] = mapped_column(ForeignKey("knowledge_items.id"), nullable=True)
     event_type: Mapped[str] = mapped_column(String(50))
     message: Mapped[str] = mapped_column(Text)
+    actor: Mapped[str] = mapped_column(String(180), default="demo-owner")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 class KnowledgeItem(Base):
