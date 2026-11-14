@@ -22,6 +22,68 @@ A separate Brand Governance area is available from the sidebar. Add explicit app
 
 The checks are deliberately transparent: required/prohibited terms and asset identifiers use exact case-insensitive phrase matching; approved facts are checked for exact approved wording and missing matches are marked for verification, not declared false. Tone guidance is always surfaced for human review. Potential absolute claims (such as guaranteed or risk-free) are flagged for substantiation. This is a review assistant, not legal advice, semantic fact verification or an automatic publication gate.
 
+## Round 3 commitments and delivery status
+
+These are the three commitments recorded in the Round 2 submission. The current implementation delivers useful parts of each, but the limitations below remain part of the product disclosure.
+
+1. **Advanced Evidence Intelligence and Conflict Detection — partially delivered.** Every extracted candidate retains a verbatim evidence excerpt and source-document ID. The Intelligence view flags explicit dependency phrases, possible decision conflicts using shared terms plus opposing negation, and gaps such as missing task owners/due dates or unreviewed candidates. These are explainable review prompts, not semantic contradiction proof. Semantic RAG, stale-source detection and robust claim-entailment verification remain future work.
+2. **Secure Access Control and Auditable Knowledge Management — partially delivered.** The Render Blueprint provisions a generated signing secret and a shared judge demo-owner login. When `AUTH_SECRET` is configured, API data routes require a signed, expiring bearer token. The Audit Log records activity type, actor label and timestamp. This is a demo access gate, not production multi-user security: per-workspace RBAC, user provisioning, individual attribution, revocable handover links and malware scanning are not implemented.
+3. **Intelligent Handover and Project Continuity Tracking — partially delivered.** Work items carry owner, due date, priority and work status. Handover highlights unassigned, overdue and blocked work, review gaps, activity and recommended next actions, and exports Markdown. The Q&A view retrieves source excerpts and labels their review state. Change-aware knowledge updates and a milestone/dependency graph remain future work.
+
+The normalized integration-event endpoint is a supporting capture adapter, not one of the three Round 2 commitments. It can record events from a trusted provider adapter; provider-specific OAuth/webhook mapping and signature verification are not included.
+
+The AI extraction provider remains optional. Without provider credentials, the application uses its rule-based extractor.
+
+## Integration event example
+
+After setting a strong `INTEGRATION_WEBHOOK_TOKEN` in the backend environment, a trusted adapter can send:
+
+```bash
+curl -X POST "$API_URL/api/projects/PROJECT_ID/integrations/events" \
+  -H "Content-Type: application/json" \
+  -H "X-Integration-Token: $INTEGRATION_WEBHOOK_TOKEN" \
+  -d '{
+    "provider": "github",
+    "event_type": "issue_opened",
+    "title": "Complete release checklist",
+    "body": "Task: Complete release checklist before launch.",
+    "url": "https://github.com/example/repo/issues/7",
+    "actor": "Project owner",
+    "category": "task"
+  }'
+```
+
+Events are recorded in the activity timeline. When `category` is one of decision, task, risk or question, a candidate is created with `needs_review` status; it is never auto-approved. Do not expose the integration token in browser code or commit it to Git.
+
+## Architecture
+
+```text
+React + Vite browser
+  ├─ Workspace dashboard, source upload, review, intelligence, Q&A, audit and handover
+  └─ Bearer session (optional when AUTH_SECRET is configured)
+          │ JSON / multipart
+          ▼
+FastAPI API
+  ├─ Auth: signed short-lived demo sessions
+  ├─ Ingestion: PyMuPDF / python-docx / UTF-8 text
+  ├─ Extraction: deterministic rules + optional OpenAI-compatible endpoint
+  ├─ Intelligence: dependency/conflict/gap heuristics + source retrieval
+  └─ Review, audit events and Markdown handover
+          │ SQLAlchemy
+          ▼
+SQLite (default) or PostgreSQL (DATABASE_URL)
+```
+
+Evidence remains attached to candidate knowledge items. Human approval is required before candidates are counted as approved handover knowledge. The current demo stores document text and project records in the database; use synthetic data only.
+
+## Roadmap
+
+- **Next:** add revocable, scoped, read-only handover links; multi-user accounts and per-workspace viewer/editor/owner permissions; named actor attribution.
+- **Evidence quality:** semantic retrieval, source versioning, stale-information detection, claim-to-evidence entailment checks and reviewer resolution workflows for contradictions.
+- **Continuity:** explicit dependency graph, milestone tracking, change-aware re-review when source material changes, and handover templates.
+- **Integrations:** provider-native GitHub webhooks with signature verification, then Slack and issue-tracker adapters.
+- **Operations:** persistent managed PostgreSQL, durable object storage, malware scanning, rate limits, structured monitoring and backup/restore.
+
 ## Technology
 
 - Frontend: React, Vite, JavaScript, CSS and Lucide icons.
@@ -59,6 +121,10 @@ Set `VITE_API_URL` in `frontend/.env` if the API is hosted elsewhere, for exampl
 VITE_API_URL=http://localhost:8000/api
 ```
 
+## Demo authentication
+
+The Render Blueprint generates `AUTH_SECRET` and configures the shared judge demo account. If deploying manually, set all three backend variables: `AUTH_SECRET` (a long random secret), `DEMO_EMAIL=demo@continuityai.app`, and `DEMO_PASSWORD=ContinuityDemo2026!`. The frontend displays these shared credentials on the sign-in page. This demo account is intended only for synthetic data and is not a substitute for multi-user identity and workspace-level permissions.
+
 ## Optional LLM extraction
 
 The application works without an API key using rule-based extraction. To enable an OpenAI-compatible endpoint, copy `backend/.env.example` to `backend/.env` and configure:
@@ -84,21 +150,22 @@ Do not claim the public demo is live until these checks pass.
 
 ## Important demo and security limitations
 
-- The app has no authentication, authorisation, workspace membership or role-based access. Do not put confidential or personal project information in a public deployment.
+- The Render Blueprint enables a single shared demo login using a generated API signing secret. The visible judge credentials are `demo@continuityai.app` / `ContinuityDemo2026!`. This is a shared demo gate, not production identity management: user provisioning, per-workspace RBAC, named individual attribution, and individual session revocation are not implemented. Do not put confidential or personal project information in a public deployment.
 - The Render Blueprint uses SQLite by default. Free service storage may be ephemeral, so data can be lost on restart or redeploy. Use persistent PostgreSQL and appropriate file storage for a durable deployment.
 - Uploads are limited to 10 MB per file. Supported formats are PDF, DOCX, TXT and Markdown.
 - Rule-based extraction searches for explicit decision/action/risk/question cues and can miss implicit context. Owner and due-date extraction is conservative and only attempts to capture explicitly written names and ISO dates; review every candidate.
 - LLM extraction is optional. If enabled, data is sent to the configured provider; review its data-handling terms before use.
-- Evidence substring validation does not perform semantic entailment or contradiction detection.
+- Evidence substring validation does not perform semantic entailment. The Intelligence tab flags only explicit rule-based dependency cues and narrow possible contradictions; it can miss implicit relationships and can produce false positives.
 - The readiness percentage is an illustrative checklist indicator, not a validated project-health score.
-- The activity timeline records actions performed in ContinuityAI; it is not yet a live audit feed from external tools. Authentication, malware scanning, controlled sharing and real-time collaboration are not implemented.
-- GitHub, Slack, Teams and email ingestion are not implemented.
+- The audit log records project actions and a shared demo-owner actor label. It does not provide individually attributable multi-user audit history. Revocable controlled sharing, malware scanning and real-time collaboration are not implemented.
+- Provider-specific OAuth, direct GitHub/Slack/Teams/email integrations, and automated webhook signature verification are not implemented. The authenticated normalized-event intake is a connector adapter endpoint; it requires a server-side shared secret.
 
 ## API endpoints
 
 - `GET /api/brand/guidelines`, `POST /api/brand/guidelines`, `DELETE /api/brand/guidelines/{id}`
 - `GET /api/brand/reviews`, `POST /api/brand/reviews`, `PATCH /api/brand/reviews/{id}`
 - `GET /api/health`
+- `GET /api/auth/config`, `POST /api/auth/login`, `GET /api/auth/me`
 - `GET /api/projects`
 - `POST /api/projects`
 - `GET /api/projects/{id}`
@@ -106,6 +173,10 @@ Do not claim the public demo is live until these checks pass.
 - `POST /api/projects/{id}/items` (manually record a decision, task, risk or question)
 - `POST /api/projects/{id}/activity` (record a project update)
 - `PATCH /api/items/{id}` (review and update owner, due date, priority and work status)
+- `GET /api/projects/{id}/intelligence`
+- `GET /api/projects/{id}/audit`
+- `POST /api/projects/{id}/ask` with `{ "question": "..." }`
+- `POST /api/projects/{id}/integrations/events` (requires `X-Integration-Token`)
 - `GET /api/projects/{id}/handover`
 - `GET /api/projects/{id}/handover.md`
 
@@ -129,7 +200,9 @@ Create a workspace named “Campus Event Portal”, upload [`demo-data/synthetic
 ```
 backend/
   app/
+    auth.py
     database.py
+    intelligence.py
     ingestion.py
     knowledge.py
     main.py

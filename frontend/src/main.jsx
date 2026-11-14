@@ -4,7 +4,7 @@ import {
   BrainCircuit, Plus, Upload, CheckCircle2, AlertTriangle, FileText,
   Download, RefreshCw, Search, LayoutDashboard, Layers3, ClipboardCheck,
   Clock3, ShieldCheck, ArrowUpRight, Sparkles, CircleHelp, ListTodo,
-  Menu, X, ExternalLink, ShieldAlert, FileCheck, Trash2
+  Menu, X, ExternalLink, ShieldAlert, FileCheck, Trash2, Network, MessageCircle
 } from "lucide-react";
 import "./style.css";
 
@@ -34,11 +34,26 @@ function App() {
   const [brandRule, setBrandRule] = useState("");
   const [brandSeverity, setBrandSeverity] = useState("warning");
   const [brandDecisionNote, setBrandDecisionNote] = useState({});
+  const [intelligence, setIntelligence] = useState(null);
+  const [assistantQuestion, setAssistantQuestion] = useState("");
+  const [assistantAnswer, setAssistantAnswer] = useState(null);
+  const [assistantBusy, setAssistantBusy] = useState(false);
+  const [auditLog, setAuditLog] = useState([]);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [authEnabled, setAuthEnabled] = useState(false);
+  const [authToken, setAuthToken] = useState("");
+  const [loginEmail, setLoginEmail] = useState("demo@continuityai.app");
+  const [loginPassword, setLoginPassword] = useState("ContinuityDemo2026!");
+  const [loginError, setLoginError] = useState("");
   const brandFileInput = useRef(null);
 
   const req = async (path, options = {}) => {
-    const response = await fetch(API + path, options);
+    const headers = new Headers(options.headers || {});
+    const token = authToken || sessionStorage.getItem("continuityai_access_token");
+    if (token) headers.set("Authorization", "Bearer " + token);
+    const response = await fetch(API + path, { ...options, headers });
     if (!response.ok) {
+      if (response.status === 401 && authEnabled) { sessionStorage.removeItem("continuityai_access_token"); setAuthToken(""); }
       let data = {};
       try { data = await response.json(); } catch {}
       throw new Error(data.detail || "Request failed. Please try again.");
@@ -71,7 +86,49 @@ function App() {
     }
   };
 
-  useEffect(() => { refresh(null); }, []);
+  useEffect(() => {
+    const boot = async () => {
+      try {
+        const response = await fetch(API + "/auth/config");
+        const config = await response.json();
+        setAuthEnabled(Boolean(config.auth_enabled));
+        if (config.auth_enabled) {
+          const saved = sessionStorage.getItem("continuityai_access_token");
+          if (saved) {
+            const check = await fetch(API + "/auth/me", { headers: { Authorization: "Bearer " + saved } });
+            if (check.ok) {
+              setAuthToken(saved);
+              await refresh(null);
+            } else sessionStorage.removeItem("continuityai_access_token");
+          }
+        } else await refresh(null);
+      } catch (e) { setError("Could not connect to the ContinuityAI API. " + e.message); }
+      finally { setAuthChecked(true); }
+    };
+    boot();
+  }, []);
+
+
+  const signIn = async (event) => {
+    event.preventDefault(); setLoginError("");
+    try {
+      const response = await fetch(API + "/auth/login", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: loginEmail, password: loginPassword })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || "Sign in failed");
+      sessionStorage.setItem("continuityai_access_token", data.access_token);
+      setAuthToken(data.access_token);
+      await refresh(null);
+    } catch (e) { setLoginError(e.message); }
+  };
+
+  const signOut = () => {
+    sessionStorage.removeItem("continuityai_access_token");
+    setAuthToken(""); setProjects([]); setActive(null); setDetail(null); setHandover(null);
+    setPage("dashboard"); setTab("overview");
+  };
 
   const loadBrand = async () => {
     const [guidelines, reviews] = await Promise.all([req("/brand/guidelines"), req("/brand/reviews")]);
@@ -222,6 +279,36 @@ function App() {
     } catch (e) { setError(e.message); }
   };
 
+
+
+  const loadAuditLog = async () => {
+    if (!active) return;
+    try { setAuditLog(await req("/projects/" + active + "/audit")); }
+    catch (e) { setError(e.message); }
+  };
+
+  const loadIntelligence = async () => {
+    if (!active) return;
+    try {
+      const result = await req("/projects/" + active + "/intelligence");
+      setIntelligence(result);
+    } catch (e) { setError(e.message); }
+  };
+
+  const askAssistant = async (event) => {
+    event.preventDefault();
+    if (!assistantQuestion.trim() || !active) return;
+    setAssistantBusy(true); setError(""); setAssistantAnswer(null);
+    try {
+      const result = await req("/projects/" + active + "/ask", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: assistantQuestion.trim() })
+      });
+      setAssistantAnswer(result);
+    } catch (e) { setError(e.message); }
+    finally { setAssistantBusy(false); }
+  };
+
   const items = detail?.items || [];
   const documents = detail?.documents || [];
   const approved = items.filter(item => item.status === "approved").length;
@@ -237,8 +324,31 @@ function App() {
     { id: "overview", label: "Overview", icon: LayoutDashboard },
     { id: "knowledge", label: "Knowledge review", icon: ClipboardCheck },
     { id: "sources", label: "Sources", icon: FileText },
-    { id: "handover", label: "Handover", icon: ShieldCheck }
+    { id: "handover", label: "Handover", icon: ShieldCheck },
+    { id: "intelligence", label: "Intelligence", icon: Network },
+    { id: "assistant", label: "Ask assistant", icon: MessageCircle },
+    { id: "audit", label: "Audit log", icon: ClipboardCheck }
   ];
+
+
+  if (!authChecked) return <div className="auth-screen"><div className="auth-card"><div className="brand-mark"><BrainCircuit size={24}/></div><h1>ContinuityAI</h1><p>Connecting to your project workspace…</p></div></div>;
+  if (authEnabled && !authToken) return (
+    <div className="auth-screen">
+      <section className="auth-card">
+        <div className="brand-mark"><BrainCircuit size={24}/></div>
+        <span className="eyebrow">CODE TITANS · PROJECT KNOWLEDGE HUB</span>
+        <h1>Welcome back</h1>
+        <p>Sign in to access the workspace and its project knowledge.</p>
+        {loginError && <div className="toast toast-error">{loginError}</div>}
+        <form className="auth-form" onSubmit={signIn}>
+          <label>Email<input type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} required autoComplete="username"/></label>
+          <label>Password<input type="password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} required autoComplete="current-password"/></label>
+          <button className="primary-button" type="submit">Sign in to demo</button>
+        </form>
+        <div className="demo-credentials"><b>Shared judge demo account</b><span>Email: demo@continuityai.app</span><span>Password: ContinuityDemo2026!</span><small>Use only with synthetic demo data. The demo account is shared by evaluators.</small></div>
+      </section>
+    </div>
+  );
 
   return (
     <div className="app-shell">
@@ -281,7 +391,7 @@ function App() {
             <span className="crumb-muted">CONTINUITYAI</span><span className="crumb-slash">/</span><b>{page === "dashboard" ? "Dashboard" : page === "brand" ? "Brand governance" : (detail?.name || "Project workspace")}</b>
           </div>
           <div className="topbar-actions">
-            <span className="secure-label"><ShieldCheck size={14}/> Evidence-first workflow</span>
+            <span className="secure-label"><ShieldCheck size={14}/> Evidence-first workflow</span>{authEnabled && <button className="small-button" type="button" onClick={signOut}>Sign out</button>}
             <button className="icon-button" onClick={() => refresh(active)} title="Refresh workspace"><RefreshCw size={16}/></button>
           </div>
         </header>
@@ -368,7 +478,7 @@ function App() {
               </section>
 
               <nav className="tab-bar" aria-label="Project sections">
-                {tabs.map(({ id, label, icon: Icon }) => <button key={id} className={tab === id ? "tab-active" : ""} onClick={() => setTab(id)}><Icon size={16}/>{label}{id === "knowledge" && needsReview > 0 && <span className="tab-count">{needsReview}</span>}</button>)}
+                {tabs.map(({ id, label, icon: Icon }) => <button key={id} className={tab === id ? "tab-active" : ""} onClick={() => { setTab(id); if (id === "intelligence") loadIntelligence(); if (id === "audit") loadAuditLog(); }}><Icon size={16}/>{label}{id === "knowledge" && needsReview > 0 && <span className="tab-count">{needsReview}</span>}</button>)}
               </nav>
 
               {tab === "overview" && (
@@ -442,13 +552,53 @@ function App() {
                     <div className="handover-risk-summary"><div><b>{handover?.unassigned_tasks?.length ?? 0}</b><span>Unassigned tasks</span></div><div><b>{handover?.blocked_items?.length ?? 0}</b><span>Blocked items</span></div><div><b>{handover?.overdue_tasks?.length ?? 0}</b><span>Overdue tasks</span></div></div><h3 className="subsection-title">Unfinished work and ownership</h3>{(handover?.open_tasks || []).length ? handover.open_tasks.map(item => <div className="gap-row" key={"task-" + item.id}><ListTodo size={16}/><div><b>{item.title}</b><small>{item.owner || "UNASSIGNED"} · {item.work_status.replaceAll("_", " ")} · {item.due_date || "No due date"}</small></div><button onClick={() => setTab("knowledge")}>Update</button></div>) : <div className="inline-empty"><CheckCircle2 size={18}/><span>No unfinished tasks recorded.</span></div>}<h3 className="subsection-title">Items requiring attention</h3>
                     {(handover?.gaps || []).length ? handover.gaps.map(item => <div className="gap-row" key={item.id}><AlertTriangle size={16}/><div><b>{item.title}</b><small>{item.category} · {item.status.replaceAll("_", " ")}</small></div><button onClick={() => setTab("knowledge")}>Review</button></div>) : <div className="inline-empty"><CheckCircle2 size={19}/><span>No unresolved review items in this handover.</span></div>}
                   </section>
-                  <section className="surface-card handover-side"><span className="eyebrow">PROJECT ACTIVITY</span><h2>Recent history</h2>{(detail?.activity || []).slice(0,8).map(event => <div className="activity-entry" key={event.id}><span className="activity-dot"/><div><b>{event.message}</b><small>{new Date(event.created_at).toLocaleString()}</small></div></div>)}{!(detail?.activity || []).length && <p className="section-subtitle">Activity will appear as your team adds sources and updates work.</p>}<div className="activity-add"><button className="secondary-button" type="button" onClick={async () => { const message = window.prompt("Record a project update, discussion or decision context"); if (message?.trim()) { try { await req("/projects/" + active + "/activity", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message, event_type: "team_update" }) }); await select(active); setTab("handover"); } catch (e) { setError(e.message); } } }}>+ Record activity</button></div>
+                  <section className="surface-card handover-side"><span className="eyebrow">PROJECT ACTIVITY</span><h2>Recent history</h2>{(detail?.activity || []).slice(0,8).map(event => <div className="activity-entry" key={event.id}><span className="activity-dot"/><div><b>{event.message}</b><small>{event.actor || "demo-owner"} · {new Date(event.created_at).toLocaleString()}</small></div></div>)}{!(detail?.activity || []).length && <p className="section-subtitle">Activity will appear as your team adds sources and updates work.</p>}<div className="activity-add"><button className="secondary-button" type="button" onClick={async () => { const message = window.prompt("Record a project update, discussion or decision context"); if (message?.trim()) { try { await req("/projects/" + active + "/activity", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message, event_type: "team_update" }) }); await select(active); setTab("handover"); } catch (e) { setError(e.message); } } }}>+ Record activity</button></div>
                     <span className="eyebrow">RECOMMENDED CHECKLIST</span><h2>Before you hand over</h2>
                     {(handover?.next_steps || []).map((step, index) => <div className="checklist-row" key={index}><span>{index + 1}</span><p>{step}</p></div>)}
                     <div className="handover-note"><ShieldCheck size={17}/><p>Only approve information after checking its source evidence. A high score does not replace human review.</p></div>
                   </section>
                 </div>
               )}
+
+              {tab === "intelligence" && (
+                <section className="surface-card knowledge-card">
+                  <div className="section-heading"><div><span className="eyebrow">KNOWLEDGE INTELLIGENCE</span><h2>Dependencies, conflicts and missing context</h2><p className="section-subtitle">Transparent rule-based checks surface items that need human attention.</p></div><button className="secondary-button" type="button" onClick={loadIntelligence}><RefreshCw size={14}/> Re-analyse</button></div>
+                  {intelligence ? <>
+                    <div className="dashboard-stats">
+                      <article className="dashboard-stat"><div><strong>{intelligence.counts.dependencies}</strong><b>Dependency cues</b><small>Explicit phrases in source text</small></div></article>
+                      <article className="dashboard-stat"><div><strong>{intelligence.counts.possible_conflicts}</strong><b>Possible conflicts</b><small>Opposing decision language</small></div></article>
+                      <article className="dashboard-stat"><div><strong>{intelligence.counts.knowledge_gaps}</strong><b>Knowledge gaps</b><small>Missing ownership, dates or review</small></div></article>
+                    </div>
+                    <h3 className="subsection-title">Possible decision conflicts</h3>
+                    {intelligence.possible_conflicts.length ? intelligence.possible_conflicts.map((item,index) => <article className="knowledge-item" key={index}><div className="item-meta"><span className="category-tag category-risk">review required</span></div><h3>{item.message}</h3><p>{item.titles.join(" ↔ ")}</p><div className="evidence-box"><span className="evidence-label">CONFLICTING SOURCE EVIDENCE</span><p>{item.evidence.join(" / ")}</p><small>Shared terms: {item.shared_terms.join(", ")}</small></div><button className="small-button" onClick={() => setTab("knowledge")}>Review knowledge items</button></article>) : <div className="inline-empty"><CheckCircle2 size={18}/>No possible conflicts detected by the current rule set.</div>}
+                    <h3 className="subsection-title">Dependency cues</h3>
+                    {intelligence.dependencies.length ? intelligence.dependencies.map((item,index) => <div className="gap-row" key={index}><Network size={16}/><div><b>{item.title}</b><small>{item.relation}: {item.related_text} · {item.review_status}</small><small>Evidence: {item.evidence}</small></div><button onClick={() => setTab("knowledge")}>Review</button></div>) : <div className="inline-empty">No explicit dependency phrases found.</div>}
+                    <h3 className="subsection-title">Missing knowledge</h3>
+                    {intelligence.knowledge_gaps.length ? intelligence.knowledge_gaps.map((item,index) => <div className="gap-row" key={index}><AlertTriangle size={16}/><div><b>{item.title}</b><small>{item.message}</small></div><button onClick={() => setTab("knowledge")}>Fix</button></div>) : <div className="inline-empty">No configured knowledge gaps detected.</div>}
+                    <p className="brand-disclaimer">{intelligence.method}</p>
+                  </> : <div className="inline-empty">Select “Re-analyse” to inspect the current workspace.</div>}
+                </section>
+              )}
+
+
+              {tab === "audit" && (
+                <section className="surface-card knowledge-card">
+                  <div className="section-heading"><div><span className="eyebrow">AUDITABLE KNOWLEDGE HISTORY</span><h2>Workspace activity log</h2><p className="section-subtitle">Timestamped record of workspace creation, uploads, knowledge edits, review decisions and integration events.</p></div><button className="secondary-button" type="button" onClick={loadAuditLog}><RefreshCw size={14}/> Refresh log</button></div>
+                  {auditLog.length ? auditLog.map(event => <article className="activity-entry audit-entry" key={event.id}><span className="activity-dot"/><div><b>{event.message}</b><small>{event.actor || "demo-owner"} · {event.event_type} · {new Date(event.created_at).toLocaleString()}</small></div></article>) : <div className="inline-empty">No activity has been recorded yet.</div>}
+                  <p className="brand-disclaimer">The public demo uses one shared demo-owner identity. This log records actions and timestamps but does not provide individual attribution across separate users.</p>
+                </section>
+              )}
+              {tab === "assistant" && (
+                <section className="surface-card knowledge-card">
+                  <div className="section-heading"><div><span className="eyebrow">SOURCE-BACKED HANDOVER Q&A</span><h2>Ask your project knowledge</h2><p className="section-subtitle">Answers are retrieved from uploaded sources and recorded knowledge. Unsupported questions return no answer rather than a guess.</p></div><MessageCircle size={22}/></div>
+                  <form className="brand-rule-form" onSubmit={askAssistant}>
+                    <label>What do you need to know?<textarea rows={3} maxLength={500} value={assistantQuestion} onChange={e => setAssistantQuestion(e.target.value)} placeholder="e.g. What decision was made about the frontend? Who owns deployment?" required/></label>
+                    <button className="primary-button" type="submit" disabled={assistantBusy || !assistantQuestion.trim()}>{assistantBusy ? "Searching sources…" : "Ask ContinuityAI"}</button>
+                  </form>
+                  {assistantAnswer && <article className="knowledge-item"><div className="item-meta"><span className="category-tag category-decision">confidence: {assistantAnswer.confidence}</span></div><h3>Retrieved answer</h3><p className="item-detail">{assistantAnswer.answer}</p>{assistantAnswer.matches.map((match,index) => <div className="evidence-box" key={index}><span className="evidence-label">{match.kind === "knowledge_item" ? "KNOWLEDGE ITEM" : "SOURCE EXCERPT"} · {match.review_status}</span><b>{match.title}</b><p>{match.excerpt}</p><small>{match.filename || (match.source_id ? "Source document #" + match.source_id : "Manual knowledge")} {match.item_id ? "· Item #" + match.item_id : ""}</small></div>)}<p className="brand-disclaimer">{assistantAnswer.disclaimer}</p></article>}
+                </section>
+              )}
+
             </>
           )}
 

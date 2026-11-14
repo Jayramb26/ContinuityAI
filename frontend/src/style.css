@@ -144,3 +144,17 @@
 .brand-disclaimer{margin:0;color:#8795a2;font-size:9px;line-height:1.6}
 @media(max-width:1050px){.brand-grid{grid-template-columns:1fr}}
 @media(max-width:650px){.brand-workflow-steps{grid-template-columns:1fr}.brand-form-row{grid-template-columns:1fr}.brand-review-head{flex-direction:column}}
+
+
+/* Demo access screen */
+.auth-screen{min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at 15% 10%,rgba(90,115,255,.14),transparent 32%),var(--page-bg,#f5f7fb)}
+.auth-card{width:min(100%,440px);padding:36px;border:1px solid var(--border,#e4e8f0);border-radius:22px;background:var(--surface,#fff);box-shadow:0 24px 70px rgba(25,35,70,.12)}
+.auth-card h1{margin:16px 0 8px;font-size:30px;letter-spacing:-.04em}
+.auth-card>p{color:var(--muted,#687386);line-height:1.6;margin-bottom:24px}
+.auth-form{display:grid;gap:16px;margin-top:22px}
+.auth-form label{display:grid;gap:7px;font-size:13px;font-weight:650}
+.auth-form input{width:100%;border:1px solid var(--border,#dce1eb);border-radius:10px;padding:12px 13px;background:var(--surface,#fff);color:inherit}
+.auth-form .primary-button{justify-content:center;width:100%;margin-top:4px}
+.demo-credentials{display:grid;gap:5px;margin-top:22px;padding:14px;border-radius:12px;background:var(--soft,#f3f5fa);font-size:13px}
+.demo-credentials small{margin-top:5px;color:var(--muted,#687386);line-height:1.5}
+.auth-card .toast{margin:14px 0}
