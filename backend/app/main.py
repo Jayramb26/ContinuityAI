@@ -2,9 +2,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 import os
 import secrets
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Header
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import Response, JSONResponse
 from sqlalchemy import select, text, inspect
 from sqlalchemy.orm import Session
 from .database import Base, engine, get_db
@@ -13,6 +13,7 @@ from .schemas import ProjectCreate, ReviewUpdate, KnowledgeCreate, ActivityCreat
 from .ingestion import extract_text, chunks
 from .knowledge import heuristic_extract, ai_extract
 from .intelligence import analyze_project, answer_project_question
+from .auth import issue_token, verify_token
 
 Base.metadata.create_all(bind=engine)
 
@@ -32,6 +33,49 @@ app = FastAPI(title="ContinuityAI API", version="0.3.0", description="Knowledge 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 allowed_origins = [x.strip() for x in os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173,https://continuityai-web.onrender.com").split(",") if x.strip()]
 app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+
+@app.middleware("http")
+async def demo_access_control(request: Request, call_next):
+    """Protect API data routes when AUTH_SECRET is configured."""
+    path = request.url.path
+    public_paths = {"/api/health", "/api/auth/config", "/api/auth/login"}
+    if path.startswith("/api/") and path not in public_paths and request.method != "OPTIONS":
+        secret = os.getenv("AUTH_SECRET", "")
+        if secret:
+            authorization = request.headers.get("Authorization", "")
+            token = authorization.split(" ", 1)[1].strip() if authorization.lower().startswith("bearer ") else ""
+            claims = verify_token(token, secret)
+            if not claims:
+                return JSONResponse(status_code=401, content={"detail": "Sign in to access this workspace."})
+            request.state.auth = claims
+    return await call_next(request)
+
+
+@app.get("/api/auth/config")
+def auth_config():
+    return {"auth_enabled": bool(os.getenv("AUTH_SECRET"))}
+
+
+@app.post("/api/auth/login")
+def auth_login(payload: dict):
+    secret = os.getenv("AUTH_SECRET", "")
+    demo_email = os.getenv("DEMO_EMAIL", "")
+    demo_password = os.getenv("DEMO_PASSWORD", "")
+    if not secret:
+        raise HTTPException(503, "Demo authentication is not configured")
+    if not demo_email or not demo_password:
+        raise HTTPException(503, "Demo credentials are not configured")
+    email = str(payload.get("email", "")).strip()
+    password = str(payload.get("password", ""))
+    if not secrets.compare_digest(email, demo_email) or not secrets.compare_digest(password, demo_password):
+        raise HTTPException(401, "Incorrect demo email or password")
+    return {"access_token": issue_token(email, secret), "token_type": "bearer", "expires_in": 28800, "role": "owner"}
+
+
+@app.get("/api/auth/me")
+def auth_me(request: Request):
+    return {"email": request.state.auth["sub"], "role": request.state.auth.get("role", "viewer")}
+
 
 
 
