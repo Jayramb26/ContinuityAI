@@ -186,7 +186,7 @@ def test_intelligence_and_grounded_project_assistant(client):
     source = (
         "Decision: We will use React for the dashboard interface.\\n"
         "Decision: We will not use React for the dashboard interface.\\n"
-        "Task: Finish deployment checklist depends on database migration.\\n"
+        "Task: Assigned to Jayram, finish deployment checklist depends on database migration.\\n"
         "Risk: Deployment may fail if environment variables are missing."
     )
     uploaded = client.post(
