@@ -29,6 +29,10 @@ with engine.begin() as conn:
         if name not in existing:
             conn.execute(text(f"ALTER TABLE knowledge_items ADD COLUMN {name} {sql_type} NOT NULL DEFAULT {default}"))
 
+    existing_events = {c["name"] for c in inspect(engine).get_columns("activity_events")}
+    if "actor" not in existing_events:
+        conn.execute(text("ALTER TABLE activity_events ADD COLUMN actor VARCHAR(180) NOT NULL DEFAULT 'demo-owner'"))
+
 app = FastAPI(title="ContinuityAI API", version="0.3.0", description="Knowledge handover and human-reviewed brand governance")
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 allowed_origins = [x.strip() for x in os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173,https://continuityai-web.onrender.com").split(",") if x.strip()]
@@ -217,8 +221,8 @@ def item_dict(i):
             "due_date": i.due_date or "", "priority": i.priority or "medium", "work_status": i.work_status or "open",
             "created_at": i.created_at.isoformat()}
 
-def log_event(db, project_id, message, event_type="update", item_id=None):
-    db.add(ActivityEvent(project_id=project_id, item_id=item_id, event_type=event_type, message=message))
+def log_event(db, project_id, message, event_type="update", item_id=None, actor="demo-owner"):
+    db.add(ActivityEvent(project_id=project_id, item_id=item_id, event_type=event_type, message=message, actor=actor))
 
 def get_project_or_404(project_id, db):
     project = db.get(Project, project_id)
@@ -249,7 +253,7 @@ def get_project(project_id: int, db: Session = Depends(get_db)):
     return {**project_dict(p),
             "documents": [{"id": d.id, "filename": d.filename, "uploaded_at": d.uploaded_at.isoformat()} for d in docs],
             "items": [item_dict(i) for i in items],
-            "activity": [{"id": e.id, "event_type": e.event_type, "message": e.message, "item_id": e.item_id, "created_at": e.created_at.isoformat()} for e in events]}
+            "activity": [{"id": e.id, "event_type": e.event_type, "message": e.message, "actor": e.actor, "item_id": e.item_id, "created_at": e.created_at.isoformat()} for e in events]}
 
 @app.post("/api/projects/{project_id}/items")
 def create_knowledge_item(project_id: int, payload: KnowledgeCreate, db: Session = Depends(get_db)):
@@ -277,7 +281,7 @@ def add_activity(project_id: int, payload: ActivityCreate, db: Session = Depends
     message = payload.message.strip()
     if not message:
         raise HTTPException(400, "Activity message is required")
-    event = ActivityEvent(project_id=project_id, event_type=payload.event_type[:50], message=message[:2000])
+    event = ActivityEvent(project_id=project_id, event_type=payload.event_type[:50], message=message[:2000], actor="demo-owner")
     db.add(event); db.commit(); db.refresh(event)
     return {"id": event.id, "event_type": event.event_type, "message": event.message, "created_at": event.created_at.isoformat()}
 
@@ -362,7 +366,7 @@ def handover(project_id: int, db: Session = Depends(get_db)):
         "tasks": [item_dict(i) for i in tasks], "risks": [item_dict(i) for i in risks],
         "unassigned_tasks": [item_dict(i) for i in unassigned], "overdue_tasks": [item_dict(i) for i in overdue],
         "blocked_items": [item_dict(i) for i in blocked], "open_tasks": [item_dict(i) for i in open_tasks],
-        "activity": [{"id": e.id, "event_type": e.event_type, "message": e.message, "created_at": e.created_at.isoformat()} for e in events],
+        "activity": [{"id": e.id, "event_type": e.event_type, "message": e.message, "actor": e.actor, "created_at": e.created_at.isoformat()} for e in events],
         "next_steps": next_steps}
 
 @app.get("/api/projects/{project_id}/handover.md")
@@ -452,7 +456,7 @@ def receive_integration_event(
         summary += f" · by {actor}"
     if url:
         summary += f" · {url}"
-    db.add(ActivityEvent(project_id=project_id, event_type=f"{provider}_{event_type}"[:50], message=summary[:2000]))
+    db.add(ActivityEvent(project_id=project_id, event_type=f"{provider}_{event_type}"[:50], message=summary[:2000], actor=actor or provider))
     created_item_id = None
     category = str(payload.get("category", "")).lower()
     if category in {"decision", "task", "risk", "question"} and title:
@@ -467,3 +471,15 @@ def receive_integration_event(
     db.commit()
     return {"received": True, "provider": provider, "created_item_id": created_item_id,
             "message": "Event recorded in the project activity timeline. Any created knowledge item requires human review."}
+
+
+@app.get("/api/projects/{project_id}/audit")
+def project_audit_log(project_id: int, db: Session = Depends(get_db)):
+    get_project_or_404(project_id, db)
+    events = db.scalars(
+        select(ActivityEvent).where(ActivityEvent.project_id == project_id)
+        .order_by(ActivityEvent.created_at.desc()).limit(500)
+    ).all()
+    return [{"id": e.id, "event_type": e.event_type, "message": e.message,
+             "actor": e.actor, "item_id": e.item_id, "created_at": e.created_at.isoformat()}
+            for e in events]
