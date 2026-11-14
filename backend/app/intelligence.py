@@ -98,9 +98,22 @@ def _is_noise_passage(value, filename=""):
     return False
 
 def _passages(content):
-    """Build readable context windows; PDF extraction often breaks sentences across lines."""
-    # A single newline in extracted PDF text is usually a visual line-wrap, not a paragraph.
-    normalized = re.sub(r"\s+", " ", (content or "")).strip()
+    """Build readable context windows after removing PDF metadata and visual furniture."""
+    raw = (content or "").replace("\\n", "\n")
+    # Remove standalone metadata before joining PDF visual lines. Otherwise one URL can
+    # cause _is_noise_passage to reject an entire paragraph containing the real answer.
+    useful_lines = []
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line or re.search(r"https?://|www\\.", line, re.I):
+            continue
+        if re.match(r"^continuityai\\s*[—-]\\s*round \\d+.*$", line, re.I):
+            continue
+        letters = re.sub(r"[^A-Za-z]", "", line)
+        if letters and letters.isupper() and len(line.split()) <= 12:
+            continue
+        useful_lines.append(line)
+    normalized = re.sub(r"\\s+", " ", " ".join(useful_lines)).strip()
     sentences = [
         re.sub(r"\s+", " ", piece).strip()
         for piece in re.split(r"(?<=[.!?])\s+", normalized)
