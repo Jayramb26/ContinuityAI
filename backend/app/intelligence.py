@@ -105,15 +105,15 @@ def _passages(content):
     useful_lines = []
     for line in raw.splitlines():
         line = line.strip()
-        if not line or re.search(r"https?://|www\\.", line, re.I):
+        if not line or re.search(r"https?://|www\.", line, re.I):
             continue
-        if re.match(r"^continuityai\\s*[—-]\\s*round \\d+.*$", line, re.I):
+        if re.match(r"^continuityai\s*[—-]\s*round \d+.*$", line, re.I):
             continue
         letters = re.sub(r"[^A-Za-z]", "", line)
         if letters and letters.isupper() and len(line.split()) <= 12:
             continue
         useful_lines.append(line)
-    normalized = re.sub(r"\\s+", " ", " ".join(useful_lines)).strip()
+    normalized = re.sub(r"\s+", " ", " ".join(useful_lines)).strip()
     sentences = [
         re.sub(r"\s+", " ", piece).strip()
         for piece in re.split(r"(?<=[.!?])\s+", normalized)
@@ -126,7 +126,6 @@ def _passages(content):
         for i in range(len(sentences) - 1)
     )
     return windows
-
 def _definition_focus(value, subject="continuityai"):
     """Return a sentence that directly defines the product, when one exists."""
     sentences = [re.sub(r"\s+", " ", part).strip() for part in re.split(r"(?<=[.!?])\s+", value or "") if part.strip()]
