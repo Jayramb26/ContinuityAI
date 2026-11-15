@@ -187,3 +187,15 @@
 .share-panel .evidence-box input { width: 100%; min-width: 0; margin: 8px 0; }
 .share-panel .section-heading { margin-top: 20px; }
 .share-panel .section-heading h3 { margin: 0; }
+
+
+/* Dependency visibility in read-only successor handovers */
+.dependency-summary{margin:0 0 9px}
+.shared-dependency-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 12px;margin:7px 0;border:1px solid #e8edf0;border-radius:8px;background:#fbfcfd}
+.shared-dependency-flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+.shared-dependency-flow b{font-size:10px;color:#42596b;overflow-wrap:anywhere}
+.shared-dependency-flow span{font-size:9px;color:#9aa6b1}
+.shared-dependency-status{flex:none;padding:5px 8px;border-radius:20px;background:#fff5e8;color:#a9793e;font-size:8px;font-weight:700}
+.shared-dependency-row.is-satisfied{border-color:#dceee5;background:#f8fcf9}
+.shared-dependency-row.is-satisfied .shared-dependency-status{background:#eaf7f0;color:#43866c}
+@media(max-width:650px){.shared-dependency-row{align-items:flex-start;flex-direction:column;gap:7px}.shared-dependency-flow{align-items:flex-start;flex-direction:column;gap:3px}}
