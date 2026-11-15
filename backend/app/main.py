@@ -495,7 +495,11 @@ def handover_markdown(project_id: int, db: Session = Depends(get_db)):
             due = f" | Due: {x['due_date']}" if x["due_date"] else ""
             lines.append(f"- **{x['title']}** — {x['detail']} [Work: {x['work_status']} | Priority: {x['priority']}{owner}{due}] (Source: document #{x['source_id']}; evidence: “{x['evidence']}”)")
         lines.append("")
-    lines += ["## Unfinished work and ownership"]
+    lines += ["## Project milestones"]
+    if not data.get("milestones"): lines.append("- No milestones recorded.")
+    for m in data.get("milestones", []):
+        lines.append(f"- **{m['name']}** | Status: {m['status']} | Progress: {m['progress']}% ({m['completed_item_count']}/{m['linked_item_count']} linked tasks) | Owner: {m['owner'] or 'UNASSIGNED'} | Due: {m['due_date'] or 'Not set'}")
+    lines += ["", "## Unfinished work and ownership"]
     if not data["open_tasks"]: lines.append("- No unfinished tasks recorded.")
     for x in data["open_tasks"]:
         lines.append(f"- {x['title']} | Owner: {x['owner'] or 'UNASSIGNED'} | Status: {x['work_status']} | Priority: {x['priority']} | Due: {x['due_date'] or 'Not set'}")
