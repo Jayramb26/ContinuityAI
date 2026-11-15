@@ -19,6 +19,8 @@ from .intelligence import analyze_project, answer_project_question
 from .auth import issue_token, verify_token, hash_password, verify_password
 
 Base.metadata.create_all(bind=engine)
+UserAccount.__table__.create(bind=engine, checkfirst=True)
+WorkspaceInvitation.__table__.create(bind=engine, checkfirst=True)
 
 # Lightweight additive migration so existing Render SQLite databases keep their data.
 with engine.begin() as conn:
@@ -139,7 +141,7 @@ def create_workspace_invitation(project_id: int, payload: dict, request: Request
     get_project_or_404(project_id, db)
     email = str(payload.get("email", "")).strip().lower()
     role = str(payload.get("role", "viewer")).strip().lower()
-    if not re.fullmatch(r"[^@\\s]+@[^@\\s]+\\.[^@\\s]+", email):
+    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
         raise HTTPException(400, "Enter a valid email address.")
     if role not in {"editor", "viewer"}:
         raise HTTPException(400, "Invitations can grant editor or viewer access only.")
