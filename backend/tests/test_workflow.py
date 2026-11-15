@@ -487,7 +487,13 @@ def test_handover_share_is_read_only_expires_and_can_be_revoked(client, monkeypa
     assert "token" not in stored[0]
     row = client.get(f"/api/shared/{share['token']}")
     assert row.status_code == 200, row.text
-    assert row.json()["handover"]["categories"]["decision"][0]["title"] == "Use FastAPI"
+    shared_handover = row.json()["handover"]
+    assert shared_handover["categories"]["decision"][0]["title"] == "Use FastAPI"
+    assert shared_handover["readiness"] == sum(
+        factor["score"] for factor in shared_handover["readiness_breakdown"].values()
+    )
+    assert shared_handover["readiness_breakdown"]["knowledge_coverage"]["max"] == 40
+    assert shared_handover["readiness_breakdown"]["dependency_health"]["max"] == 10
 
     assert client.get("/api/shared/not-a-valid-token").status_code == 404
     revoked = client.delete(f"/api/projects/{project_id}/shares/{share['id']}")
