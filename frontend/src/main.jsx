@@ -49,6 +49,10 @@ function App() {
   const [members, setMembers] = useState([]);
   const [memberEmail, setMemberEmail] = useState("");
   const [memberRole, setMemberRole] = useState("viewer");
+  const [invitations, setInvitations] = useState([]);
+  const [createdInvitation, setCreatedInvitation] = useState(null);
+  const [inviteToken] = useState(() => new URLSearchParams(window.location.search).get("invite") || "");
+  const [invitePassword, setInvitePassword] = useState("");
   const [shareLinks, setShareLinks] = useState([]);
   const [shareExpiryHours, setShareExpiryHours] = useState("72");
   const [createdShare, setCreatedShare] = useState(null);
@@ -304,6 +308,38 @@ function App() {
 
 
 
+  const loadInvitations = async () => {
+    if (!active) return;
+    try { setInvitations(await req("/projects/" + active + "/invitations")); }
+    catch (e) { setError(e.message); }
+  };
+
+  const createInvitation = async (event) => {
+    event.preventDefault(); setCreatedInvitation(null);
+    try {
+      const result = await req("/projects/" + active + "/invitations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: memberEmail, role: memberRole }) });
+      const url = window.location.origin + "/?invite=" + encodeURIComponent(result.token);
+      setCreatedInvitation({ url, email: result.email, expires_at: result.expires_at });
+      setMemberEmail(""); await loadInvitations();
+      setNotice("Invitation created. Send the private link to the intended person; it expires in 7 days and can be used once.");
+    } catch (e) { setError(e.message); }
+  };
+
+  const revokeInvitation = async (id) => {
+    try { await req("/projects/" + active + "/invitations/" + id, { method: "DELETE" }); await loadInvitations(); setNotice("Invitation revoked."); }
+    catch (e) { setError(e.message); }
+  };
+
+  const acceptInvitation = async (event) => {
+    event.preventDefault(); setLoginError("");
+    try {
+      const response = await fetch(API + "/invitations/accept", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: inviteToken, password: invitePassword }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || "Invitation acceptance failed");
+      sessionStorage.setItem("continuityai_access_token", data.access_token); setAuthToken(data.access_token);
+      window.history.replaceState({}, "", window.location.pathname); await refresh(null);
+    } catch (e) { setLoginError(e.message); }
+  };
   const loadMembers = async () => {
     if (!active) return;
     try { setMembers(await req("/projects/" + active + "/members")); }
@@ -490,15 +526,25 @@ function App() {
       <section className="auth-card">
         <div className="brand-mark"><BrainCircuit size={24}/></div>
         <span className="eyebrow">CODE TITANS · PROJECT KNOWLEDGE HUB</span>
-        <h1>Welcome back</h1>
-        <p>Sign in to access the workspace and its project knowledge.</p>
-        {loginError && <div className="toast toast-error">{loginError}</div>}
-        <form className="auth-form" onSubmit={signIn}>
-          <label>Email<input type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} required autoComplete="username"/></label>
-          <label>Password<input type="password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} required autoComplete="current-password"/></label>
-          <button className="primary-button" type="submit">Sign in to demo</button>
-        </form>
-        <div className="demo-credentials"><b>Shared judge demo account</b><span>Email: demo@continuityai.app</span><span>Password: ContinuityDemo2026!</span><small>Use only with synthetic demo data. The demo account is shared by evaluators.</small></div>
+        {inviteToken ? <>
+          <h1>Join a workspace</h1>
+          <p>Accept your one-time invitation. New accounts need a password with at least 12 characters; existing accounts must enter their current password.</p>
+          {loginError && <div className="toast toast-error">{loginError}</div>}
+          <form className="auth-form" onSubmit={acceptInvitation}>
+            <label>Account password<input type="password" value={invitePassword} onChange={e => setInvitePassword(e.target.value)} required autoComplete="new-password"/></label>
+            <button className="primary-button" type="submit">Accept invitation</button>
+          </form>
+        </> : <>
+          <h1>Welcome back</h1>
+          <p>Sign in to access the workspace and its project knowledge.</p>
+          {loginError && <div className="toast toast-error">{loginError}</div>}
+          <form className="auth-form" onSubmit={signIn}>
+            <label>Email<input type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} required autoComplete="username"/></label>
+            <label>Password<input type="password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} required autoComplete="current-password"/></label>
+            <button className="primary-button" type="submit">Sign in</button>
+          </form>
+          <div className="demo-credentials"><b>Shared judge demo account</b><span>Email: demo@continuityai.app</span><span>Password: ContinuityDemo2026!</span><small>Use only with synthetic demo data. The demo account is shared by evaluators.</small></div>
+        </>}
       </section>
     </div>
   );
@@ -631,7 +677,7 @@ function App() {
               </section>
 
               <nav className="tab-bar" aria-label="Project sections">
-                {tabs.map(({ id, label, icon: Icon }) => <button key={id} className={tab === id ? "tab-active" : ""} onClick={() => { setTab(id); if (id === "intelligence") loadIntelligence(); if (id === "audit") loadAuditLog(); if (id === "members") loadMembers(); }}><Icon size={16}/>{label}{id === "knowledge" && needsReview > 0 && <span className="tab-count">{needsReview}</span>}</button>)}
+                {tabs.map(({ id, label, icon: Icon }) => <button key={id} className={tab === id ? "tab-active" : ""} onClick={() => { setTab(id); if (id === "intelligence") loadIntelligence(); if (id === "audit") loadAuditLog(); if (id === "members") { loadMembers(); loadInvitations(); } }}><Icon size={16}/>{label}{id === "knowledge" && needsReview > 0 && <span className="tab-count">{needsReview}</span>}</button>)}
               </nav>
 
               {tab === "overview" && (
@@ -730,15 +776,18 @@ function App() {
 
               {tab === "members" && (
                 <section className="surface-card knowledge-card">
-                  <div className="section-heading"><div><span className="eyebrow">WORKSPACE PERMISSIONS</span><h2>Team access</h2><p className="section-subtitle">Membership and permissions apply to this workspace only. Assign only people with an already configured ContinuityAI demo login.</p></div><Users size={22}/></div>
-                  <form className="brand-rule-form" onSubmit={addMember}>
-                    <label>Account email<input type="email" value={memberEmail} onChange={e => setMemberEmail(e.target.value)} placeholder="editor@continuityai.app" required/></label>
+                  <div className="section-heading"><div><span className="eyebrow">WORKSPACE PERMISSIONS</span><h2>Team access</h2><p className="section-subtitle">Invite teammates with a private, single-use link. Access is scoped to this workspace.</p></div><Users size={22}/></div>
+                  <form className="brand-rule-form" onSubmit={createInvitation}>
+                    <label>Teammate email<input type="email" value={memberEmail} onChange={e => setMemberEmail(e.target.value)} placeholder="teammate@example.com" required/></label>
                     <label>Workspace role<select value={memberRole} onChange={e => setMemberRole(e.target.value)}><option value="editor">Editor — can update project knowledge</option><option value="viewer">Viewer — read-only access</option></select></label>
-                    <button className="primary-button" type="submit"><Users size={15}/> Add or update member</button>
+                    <button className="primary-button" type="submit"><Users size={15}/> Create invitation link</button>
                   </form>
+                  {createdInvitation && <div className="evidence-box"><b>Invitation link for {createdInvitation.email}</b><p>This secret link can be used once and expires {new Date(createdInvitation.expires_at).toLocaleString()}.</p><div className="share-link-row"><input readOnly value={createdInvitation.url}/><button type="button" className="small-button" onClick={() => navigator.clipboard.writeText(createdInvitation.url)}>Copy link</button></div></div>}
+                  <div className="section-heading"><h3>Pending invitations</h3><button type="button" className="small-button" onClick={loadInvitations}>Refresh</button></div>
+                  {invitations.length ? invitations.map(invite => <div className="gap-row" key={invite.id}><ExternalLink size={16}/><div><b>{invite.email}</b><small>{invite.role} · Expires {new Date(invite.expires_at).toLocaleDateString()}</small></div><button type="button" className="small-button" onClick={() => revokeInvitation(invite.id)}>Revoke</button></div>) : <div className="inline-empty">No pending invitations.</div>}
                   <div className="section-heading"><h3>Current members</h3><button type="button" className="small-button" onClick={loadMembers}>Refresh</button></div>
                   {members.length ? members.map(member => <div className="gap-row" key={member.id}><Users size={16}/><div><b>{member.email}</b><small>{member.role} · Added by {member.added_by || "workspace setup"} · {new Date(member.created_at).toLocaleDateString()}</small></div>{member.role !== "owner" && <><select aria-label={"Role for " + member.email} value={member.role} onChange={e => updateMemberRole(member,e.target.value)}><option value="editor">Editor</option><option value="viewer">Viewer</option></select><button type="button" className="small-button" onClick={() => removeMember(member)}>Remove</button></>}</div>) : <div className="inline-empty">No team members loaded yet. Refresh to view this workspace roster.</div>}
-                  <p className="brand-disclaimer">Demo limitation: this adds an existing configured login to this workspace; it does not send an email invitation or create an account. Owners manage the roster, editors can update project data, and viewers are read-only. This is not yet a production identity provider.</p>
+                  <p className="brand-disclaimer">ContinuityAI creates the invitation link but does not email it automatically. Send it only to the invited email address. Links expire after 7 days, can be accepted once, and grant editor or viewer access only.</p>
                 </section>
               )}
 
