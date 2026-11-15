@@ -744,9 +744,15 @@ def list_handover_acknowledgements(project_id: int, request: Request, db: Sessio
     rows = db.scalars(select(HandoverAcknowledgement).where(
         HandoverAcknowledgement.project_id == project_id
     ).order_by(HandoverAcknowledgement.updated_at.desc())).all()
+    workspace_members = db.scalars(select(ProjectMember).where(
+        ProjectMember.project_id == project_id
+    ).order_by(ProjectMember.created_at.asc())).all()
     current_email = str((getattr(request.state, "auth", None) or {}).get("sub", "")).strip().lower()
     return {
         "current_user_email": current_email,
+        "members": [{
+            "email": member.email, "role": member.role, "added_at": member.created_at.isoformat()
+        } for member in workspace_members],
         "items": [{
             "id": row.id, "email": row.email, "status": row.status, "note": row.note,
             "created_at": row.created_at.isoformat(), "updated_at": row.updated_at.isoformat()
