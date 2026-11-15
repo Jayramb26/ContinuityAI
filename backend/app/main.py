@@ -760,9 +760,25 @@ def handover(project_id: int, db: Session = Depends(get_db)):
     today = datetime.now(timezone.utc).date().isoformat()
     overdue_milestones = [m for m in milestones if m["due_date"] and m["due_date"] < today and m["status"] != "completed"]
     coverage = sum(bool(categories[c]) for c in categories)
-    readiness = round((coverage / 4) * 45 + (len(approved) / max(1, len(items))) * 25 +
-                      (len(tasks) - len(unassigned)) / max(1, len(tasks)) * 15 +
-                      (len(tasks) - len(overdue)) / max(1, len(tasks)) * 15)
+    # Keep the readiness score explainable: every point belongs to a visible factor.
+    dependency_score = (round((len(task_dependencies) - sum(not dep["satisfied"] for dep in task_dependencies)) /
+                              max(1, len(task_dependencies)) * 10) if task_dependencies else 10)
+    readiness_breakdown = {
+        "knowledge_coverage": {"label": "Knowledge coverage", "score": round(coverage / 4 * 40), "max": 40,
+                               "detail": f"{coverage} of 4 knowledge categories have approved items"},
+        "human_approval": {"label": "Human approval", "score": round(len(approved) / max(1, len(items)) * 25), "max": 25,
+                           "detail": f"{len(approved)} of {len(items)} knowledge items are approved"},
+        "task_ownership": {"label": "Task ownership", "score": round((len(tasks) - len(unassigned)) / max(1, len(tasks)) * 10), "max": 10,
+                           "detail": f"{len(tasks) - len(unassigned)} of {len(tasks)} tasks have an owner"},
+        "schedule_health": {"label": "Schedule health", "score": round((len(tasks) - len(overdue)) / max(1, len(tasks)) * 10), "max": 10,
+                            "detail": f"{len(tasks) - len(overdue)} of {len(tasks)} tasks are not overdue"},
+        "dependency_health": {"label": "Dependency health", "score": dependency_score, "max": 10,
+                              "detail": (f"{sum(dep['satisfied'] for dep in task_dependencies)} of {len(task_dependencies)} prerequisites are complete"
+                                         if task_dependencies else "No explicit task dependencies recorded")},
+        "blocker_health": {"label": "Blocker health", "score": round((len(items) - len(blocked)) / max(1, len(items)) * 5), "max": 5,
+                           "detail": f"{len(items) - len(blocked)} of {len(items)} items are not blocked"},
+    }
+    readiness = sum(part["score"] for part in readiness_breakdown.values())
     next_steps = []
     if gaps: next_steps.append(f"Review {len(gaps)} candidate knowledge items")
     if unassigned: next_steps.append(f"Assign owners to {len(unassigned)} task(s)")
@@ -773,7 +789,8 @@ def handover(project_id: int, db: Session = Depends(get_db)):
     if not next_steps: next_steps.append("Review the latest activity and confirm the handover is current")
     return {"project": project_dict(p), "generated_at": datetime.now(timezone.utc).isoformat(),
         "source_count": len(docs), "approved_count": len(approved), "review_count": len(gaps),
-        "readiness": max(0, min(100, readiness)), "categories": categories, "gaps": [item_dict(i) for i in gaps],
+        "readiness": max(0, min(100, readiness)), "readiness_breakdown": readiness_breakdown,
+        "categories": categories, "gaps": [item_dict(i) for i in gaps],
         "tasks": [item_dict(i) for i in tasks], "risks": [item_dict(i) for i in risks],
         "unassigned_tasks": [item_dict(i) for i in unassigned], "overdue_tasks": [item_dict(i) for i in overdue],
         "blocked_items": [item_dict(i) for i in blocked], "open_tasks": [item_dict(i) for i in open_tasks],
@@ -871,7 +888,11 @@ def handover_markdown(project_id: int, db: Session = Depends(get_db)):
     data = handover(project_id, db)
     lines = [f"# Handover: {data['project']['name']}", "", data['project']['description'], "",
         f"Generated: {data['generated_at']}", f"Readiness checklist: {data['readiness']}%",
-        f"Sources: {data['source_count']} | Approved: {data['approved_count']} | Needs review: {data['review_count']}", ""]
+        f"Sources: {data['source_count']} | Approved: {data['approved_count']} | Needs review: {data['review_count']}", "",
+        "## Readiness score breakdown"]
+    for part in data.get("readiness_breakdown", {}).values():
+        lines.append(f"- {part['label']}: {part['score']}/{part['max']} — {part['detail']}")
+    lines.append("")
     for cat, title in [("decision", "Key decisions"), ("task", "Tasks and actions"), ("risk", "Risks and dependencies"), ("question", "Open questions")]:
         lines += [f"## {title}"]
         group = data["categories"][cat]
