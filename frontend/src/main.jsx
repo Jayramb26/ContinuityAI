@@ -46,6 +46,10 @@ function App() {
   const [milestoneItemIds, setMilestoneItemIds] = useState([]);
   const [milestoneBusy, setMilestoneBusy] = useState(false);
   const [auditLog, setAuditLog] = useState([]);
+  const [shareLinks, setShareLinks] = useState([]);
+  const [shareExpiryHours, setShareExpiryHours] = useState("72");
+  const [createdShare, setCreatedShare] = useState(null);
+  const [sharedHandover, setSharedHandover] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [authEnabled, setAuthEnabled] = useState(false);
   const [authToken, setAuthToken] = useState("");
@@ -96,6 +100,14 @@ function App() {
   useEffect(() => {
     const boot = async () => {
       try {
+        const shareToken = new URLSearchParams(window.location.search).get("share");
+        if (shareToken) {
+          const sharedResponse = await fetch(API + "/shared/" + encodeURIComponent(shareToken));
+          const sharedData = await sharedResponse.json();
+          if (!sharedResponse.ok) throw new Error(sharedData.detail || "This handover link is invalid or expired.");
+          setSharedHandover(sharedData);
+          return;
+        }
         const response = await fetch(API + "/auth/config");
         const config = await response.json();
         setAuthEnabled(Boolean(config.auth_enabled));
@@ -288,6 +300,42 @@ function App() {
 
 
 
+
+  const loadShareLinks = async () => {
+    if (!active) return;
+    try { setShareLinks(await req("/projects/" + active + "/shares")); }
+    catch (e) { setError(e.message); }
+  };
+
+  const createHandoverShare = async (event) => {
+    event.preventDefault();
+    if (!active) return;
+    setError(""); setCreatedShare(null);
+    try {
+      const result = await req("/projects/" + active + "/shares", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expires_in_hours: Number(shareExpiryHours) })
+      });
+      setCreatedShare({ url: window.location.origin + "/?share=" + encodeURIComponent(result.token), expires_at: result.expires_at });
+      await loadShareLinks();
+      setNotice("Read-only handover link created. Copy it now; the secret token is shown only once.");
+    } catch (e) { setError(e.message); }
+  };
+
+  const revokeHandoverShare = async (shareId) => {
+    try {
+      await req("/projects/" + active + "/shares/" + shareId, { method: "DELETE" });
+      await loadShareLinks();
+      setNotice("Handover link revoked. It can no longer be opened.");
+    } catch (e) { setError(e.message); }
+  };
+
+  const copyShareLink = async () => {
+    if (!createdShare?.url) return;
+    try { await navigator.clipboard.writeText(createdShare.url); setNotice("Share link copied to clipboard."); }
+    catch { setError("Clipboard access is unavailable. Select and copy the link manually."); }
+  };
+
   const loadAuditLog = async () => {
     if (!active) return;
     try { setAuditLog(await req("/projects/" + active + "/audit")); }
@@ -374,6 +422,28 @@ function App() {
     { id: "audit", label: "Audit log", icon: ClipboardCheck }
   ];
 
+
+  if (sharedHandover) {
+    const shared = sharedHandover.handover;
+    return (
+      <div className="app-shell">
+        <main className="main-content">
+          <div className="page-header"><div><span className="eyebrow">CONTINUITYAI · SECURE HANDOVER</span><h1>{shared.project.name}</h1><p>{shared.project.description || "Read-only project handover."}</p></div><span className="review-status status-approved"><ShieldCheck size={13}/> READ ONLY</span></div>
+          <section className="surface-card knowledge-card">
+            <div className="section-heading"><div><span className="eyebrow">SUCCESSOR ACCESS</span><h2>Project handover snapshot</h2><p className="section-subtitle">This is a read-only snapshot generated when the link is opened. No workspace editing is available.</p></div></div>
+            <div className="handover-stats"><div><b>{shared.readiness}%</b><span>Readiness</span></div><div><b>{shared.approved_count}</b><span>Approved items</span></div><div><b>{shared.review_count}</b><span>Need review</span></div><div><b>{shared.source_count}</b><span>Sources</span></div></div>
+            {["decision","task","risk","question"].map(category => <section key={category}><h3 className="subsection-title">{category === "decision" ? "Key decisions" : category === "task" ? "Approved tasks" : category === "risk" ? "Approved risks" : "Open questions"}</h3>{(shared.categories?.[category] || []).length ? shared.categories[category].map(item => <article className="knowledge-item" key={item.id}><h3>{item.title}</h3><p>{item.detail}</p><small>{item.owner || "Owner not assigned"} · {item.work_status?.replaceAll("_"," ") || "open"} · {item.due_date || "No due date"}</small>{item.evidence && <div className="evidence-box"><span className="evidence-label">SOURCE EVIDENCE</span><p>{item.evidence}</p></div>}</article>) : <p className="section-subtitle">No approved {category} items recorded.</p>}</section>)}
+            <h3 className="subsection-title">Unfinished work and ownership</h3>{(shared.open_tasks || []).length ? shared.open_tasks.map(item => <div className="gap-row" key={item.id}><ListTodo size={16}/><div><b>{item.title}</b><small>{item.owner || "UNASSIGNED"} · {item.work_status} · {item.due_date || "No due date"}</small></div></div>) : <p className="section-subtitle">No unfinished tasks recorded.</p>}
+            <h3 className="subsection-title">Milestones</h3>{(shared.milestones || []).length ? shared.milestones.map(item => <div className="gap-row" key={item.id}><Layers3 size={16}/><div><b>{item.name}</b><small>{item.status} · {item.progress}% · {item.owner || "Unassigned"} · {item.due_date || "No due date"}</small></div></div>) : <p className="section-subtitle">No milestones recorded.</p>}
+            <h3 className="subsection-title">Items requiring human review</h3>{(shared.gaps || []).length ? shared.gaps.map(item => <div className="gap-row" key={item.id}><AlertTriangle size={16}/><div><b>{item.title}</b><small>{item.category} · {item.status}</small></div></div>) : <p className="section-subtitle">No unresolved review items recorded.</p>}
+            <h3 className="subsection-title">Recommended next actions</h3>{(shared.next_steps || []).map((step,index) => <div className="checklist-row" key={index}><span>{index+1}</span><p>{step}</p></div>)}
+            <p className="brand-disclaimer">Link expires {new Date(sharedHandover.share.expires_at).toLocaleString()}. If you need access after expiry, ask the workspace owner for a new link.</p>
+          </section>
+          <footer className="app-footer"><span>CONTINUITYAI</span><span>Never let project knowledge leave with a person.</span></footer>
+        </main>
+      </div>
+    );
+  }
 
   if (!authChecked) return <div className="auth-screen"><div className="auth-card"><div className="brand-mark"><BrainCircuit size={24}/></div><h1>ContinuityAI</h1><p>Connecting to your project workspace…</p></div></div>;
   if (authEnabled && !authToken) return (
@@ -632,6 +702,18 @@ function App() {
                     <span className="eyebrow">RECOMMENDED CHECKLIST</span><h2>Before you hand over</h2>
                     {(handover?.next_steps || []).map((step, index) => <div className="checklist-row" key={index}><span>{index + 1}</span><p>{step}</p></div>)}
                     <div className="handover-note"><ShieldCheck size={17}/><p>Only approve information after checking its source evidence. A high score does not replace human review.</p></div>
+                    <div className="share-panel">
+                      <span className="eyebrow">SUCCESSOR ACCESS</span><h2>Share a read-only handover</h2>
+                      <p className="section-subtitle">Create a private bearer link for the next owner. It expires automatically and can be revoked at any time.</p>
+                      <form className="brand-rule-form" onSubmit={createHandoverShare}>
+                        <label>Link expiry<select value={shareExpiryHours} onChange={e => setShareExpiryHours(e.target.value)}><option value="24">24 hours</option><option value="72">3 days</option><option value="168">7 days</option><option value="720">30 days</option></select></label>
+                        <button type="submit" className="primary-button"><ShieldCheck size={15}/> Create read-only link</button>
+                      </form>
+                      {createdShare && <div className="evidence-box"><span className="evidence-label">COPY THIS LINK · TOKEN SHOWN ONCE</span><input readOnly value={createdShare.url} onFocus={e => e.target.select()}/><button type="button" className="small-button" onClick={copyShareLink}>Copy link</button><small>Expires {new Date(createdShare.expires_at).toLocaleString()}</small></div>}
+                      <div className="section-heading"><h3>Existing links</h3><button type="button" className="small-button" onClick={loadShareLinks}>Refresh</button></div>
+                      {shareLinks.length ? shareLinks.map(link => <div className="gap-row" key={link.id}><ShieldCheck size={16}/><div><b>Link #{link.id} · {link.status.replaceAll("_"," ")}</b><small>Created {new Date(link.created_at).toLocaleString()} · Expires {new Date(link.expires_at).toLocaleString()}</small></div>{link.status === "active" && <button type="button" className="small-button" onClick={() => revokeHandoverShare(link.id)}>Revoke</button>}</div>) : <p className="section-subtitle">No share links yet. Create one for your successor.</p>}
+                      <p className="brand-disclaimer">Anyone with an active link can view the handover snapshot. Share it only with the intended recipient. The link is read-only; it does not grant workspace login or editing rights.</p>
+                    </div>
                   </section>
                 </div>
               )}
