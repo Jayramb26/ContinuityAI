@@ -455,6 +455,10 @@ def handover(project_id: int, db: Session = Depends(get_db)):
     overdue = [i for i in tasks if i.due_date and i.due_date < datetime.now(timezone.utc).date().isoformat() and i.work_status != "done"]
     blocked = [i for i in items if i.work_status == "blocked"]
     open_tasks = [i for i in tasks if i.work_status != "done"]
+    milestone_rows = db.scalars(select(ProjectMilestone).where(ProjectMilestone.project_id == project_id).order_by(ProjectMilestone.due_date.asc())).all()
+    milestones = [milestone_dict(row, db) for row in milestone_rows]
+    today = datetime.now(timezone.utc).date().isoformat()
+    overdue_milestones = [m for m in milestones if m["due_date"] and m["due_date"] < today and m["status"] != "completed"]
     coverage = sum(bool(categories[c]) for c in categories)
     readiness = round((coverage / 4) * 45 + (len(approved) / max(1, len(items))) * 25 +
                       (len(tasks) - len(unassigned)) / max(1, len(tasks)) * 15 +
@@ -464,6 +468,7 @@ def handover(project_id: int, db: Session = Depends(get_db)):
     if unassigned: next_steps.append(f"Assign owners to {len(unassigned)} task(s)")
     if overdue: next_steps.append(f"Resolve {len(overdue)} overdue task(s)")
     if blocked: next_steps.append(f"Unblock {len(blocked)} blocked item(s)")
+    if overdue_milestones: next_steps.append(f"Review {len(overdue_milestones)} overdue milestone(s)")
     if not next_steps: next_steps.append("Review the latest activity and confirm the handover is current")
     return {"project": project_dict(p), "generated_at": datetime.now(timezone.utc).isoformat(),
         "source_count": len(docs), "approved_count": len(approved), "review_count": len(gaps),
@@ -471,6 +476,7 @@ def handover(project_id: int, db: Session = Depends(get_db)):
         "tasks": [item_dict(i) for i in tasks], "risks": [item_dict(i) for i in risks],
         "unassigned_tasks": [item_dict(i) for i in unassigned], "overdue_tasks": [item_dict(i) for i in overdue],
         "blocked_items": [item_dict(i) for i in blocked], "open_tasks": [item_dict(i) for i in open_tasks],
+        "milestones": milestones, "overdue_milestones": overdue_milestones,
         "activity": [{"id": e.id, "event_type": e.event_type, "message": e.message, "actor": e.actor, "created_at": e.created_at.isoformat()} for e in events],
         "next_steps": next_steps}
 
