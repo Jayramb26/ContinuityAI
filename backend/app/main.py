@@ -11,12 +11,12 @@ from sqlalchemy import select, text, inspect
 from sqlalchemy.orm import Session
 from .database import SessionLocal
 from .database import Base, engine, get_db
-from .models import Project, SourceDocument, KnowledgeItem, ActivityEvent, BrandGuideline, BrandReview, ProjectMilestone, HandoverShare, ProjectMember
+from .models import Project, SourceDocument, KnowledgeItem, ActivityEvent, BrandGuideline, BrandReview, ProjectMilestone, HandoverShare, ProjectMember, UserAccount, WorkspaceInvitation
 from .schemas import ProjectCreate, ReviewUpdate, KnowledgeCreate, ActivityCreate, BrandGuidelineCreate, BrandDecision, MilestoneCreate, MilestoneUpdate
 from .ingestion import extract_text, chunks
 from .knowledge import heuristic_extract, ai_extract
 from .intelligence import analyze_project, answer_project_question
-from .auth import issue_token, verify_token
+from .auth import issue_token, verify_token, hash_password, verify_password
 
 Base.metadata.create_all(bind=engine)
 
@@ -61,7 +61,7 @@ app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_credenti
 async def demo_access_control(request: Request, call_next):
     """Require project membership and enforce workspace-specific roles."""
     path = request.url.path
-    public_paths = {"/api/health", "/api/auth/config", "/api/auth/login"}
+    public_paths = {"/api/health", "/api/auth/config", "/api/auth/login", "/api/invitations/accept"}
     shared_public = path.startswith("/api/shared/")
     if path.startswith("/api/") and path not in public_paths and not shared_public and request.method != "OPTIONS":
         secret = os.getenv("AUTH_SECRET", "")
