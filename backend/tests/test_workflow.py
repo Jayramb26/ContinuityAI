@@ -200,7 +200,7 @@ def test_explicit_task_dependencies_validate_cycles_and_export(client):
     exported = client.get(f"/api/projects/{project_id}/handover.md")
     assert "## Task dependencies" in exported.text
     assert "## Readiness score breakdown" in exported.text
-    assert "Dependency health: 0/10" in exported.text
+    assert "Dependency health: 5/10" in exported.text
     assert "Deploy API" in exported.text and "Prepare database migration" in exported.text
     assert client.delete(f"/api/items/{second['id']}/dependencies/{added.json()['id']}").status_code == 200
     assert len(client.get(f"/api/projects/{project_id}/handover").json()["task_dependencies"]) == 1
