@@ -1,5 +1,6 @@
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+import re
 import os
 import hashlib
 import secrets
@@ -8,8 +9,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, JSONResponse
 from sqlalchemy import select, text, inspect
 from sqlalchemy.orm import Session
+from .database import SessionLocal
 from .database import Base, engine, get_db
-from .models import Project, SourceDocument, KnowledgeItem, ActivityEvent, BrandGuideline, BrandReview, ProjectMilestone, HandoverShare
+from .models import Project, SourceDocument, KnowledgeItem, ActivityEvent, BrandGuideline, BrandReview, ProjectMilestone, HandoverShare, ProjectMember
 from .schemas import ProjectCreate, ReviewUpdate, KnowledgeCreate, ActivityCreate, BrandGuidelineCreate, BrandDecision, MilestoneCreate, MilestoneUpdate
 from .ingestion import extract_text, chunks
 from .knowledge import heuristic_extract, ai_extract
@@ -34,6 +36,18 @@ with engine.begin() as conn:
     if "last_reviewed_at" not in existing_sources:
         conn.execute(text("ALTER TABLE source_documents ADD COLUMN last_reviewed_at DATETIME"))
 
+    # Existing demo workspaces remain accessible to the configured owner after membership enforcement.
+    legacy_owner = os.getenv("DEMO_EMAIL", "").strip().lower()
+    if legacy_owner:
+        conn.execute(text("""
+            INSERT INTO project_members (project_id, email, role, added_by, created_at)
+            SELECT p.id, :email, 'owner', :email, CURRENT_TIMESTAMP
+            FROM projects p
+            WHERE NOT EXISTS (
+                SELECT 1 FROM project_members pm WHERE pm.project_id = p.id
+            )
+        """), {"email": legacy_owner})
+
     existing_events = {c["name"] for c in inspect(engine).get_columns("activity_events")}
     if "actor" not in existing_events:
         conn.execute(text("ALTER TABLE activity_events ADD COLUMN actor VARCHAR(180) NOT NULL DEFAULT 'demo-owner'"))
@@ -45,10 +59,11 @@ app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_credenti
 
 @app.middleware("http")
 async def demo_access_control(request: Request, call_next):
-    """Protect API data routes when AUTH_SECRET is configured."""
+    """Require project membership and enforce workspace-specific roles."""
     path = request.url.path
     public_paths = {"/api/health", "/api/auth/config", "/api/auth/login"}
-    if path.startswith("/api/") and path not in public_paths and request.method != "OPTIONS":
+    shared_public = path.startswith("/api/shared/")
+    if path.startswith("/api/") and path not in public_paths and not shared_public and request.method != "OPTIONS":
         secret = os.getenv("AUTH_SECRET", "")
         if secret:
             authorization = request.headers.get("Authorization", "")
@@ -56,17 +71,35 @@ async def demo_access_control(request: Request, call_next):
             claims = verify_token(token, secret)
             if not claims:
                 return JSONResponse(status_code=401, content={"detail": "Sign in to access this workspace."})
-            role = claims.get("role", "viewer")
-            # Viewers may read and ask questions, but cannot mutate workspace data.
-            # The normalized integration endpoint has its own independent shared-secret check.
-            read_only_post = path.endswith("/ask")
-            integration_event = path.endswith("/integrations/events")
-            if request.method not in {"GET", "HEAD", "OPTIONS"} and role == "viewer" and not (request.method == "POST" and (read_only_post or integration_event)):
-                return JSONResponse(status_code=403, content={"detail": "Viewer access is read-only."})
-            # Only owners can change global brand rules and review decisions.
-            if path.startswith("/api/brand/") and request.method not in {"GET", "HEAD", "OPTIONS"} and role != "owner":
-                return JSONResponse(status_code=403, content={"detail": "Only workspace owners can manage brand governance."})
             request.state.auth = claims
+            email = str(claims.get("sub", "")).strip().lower()
+            project_id = None
+            match = re.match(r"^/api/projects/(\d+)(?:/|$)", path)
+            if match:
+                project_id = int(match.group(1))
+            else:
+                patterns = [(r"^/api/items/(\d+)$", KnowledgeItem), (r"^/api/milestones/(\d+)$", ProjectMilestone), (r"^/api/sources/(\d+)/review$", SourceDocument)]
+                for pattern, model in patterns:
+                    found = re.match(pattern, path)
+                    if found:
+                        with SessionLocal() as lookup:
+                            row = lookup.get(model, int(found.group(1)))
+                            project_id = row.project_id if row else None
+                        break
+            if project_id is not None:
+                with SessionLocal() as lookup:
+                    member = lookup.scalar(select(ProjectMember).where(ProjectMember.project_id == project_id, ProjectMember.email == email))
+                if not member:
+                    return JSONResponse(status_code=404, content={"detail": "You do not have access to this workspace."})
+                request.state.workspace_role = member.role
+                if (path.endswith("/members") or "/members/" in path) and request.method not in {"GET", "HEAD"} and member.role != "owner":
+                    return JSONResponse(status_code=403, content={"detail": "Only workspace owners can manage members."})
+                if member.role == "viewer" and request.method not in {"GET", "HEAD", "OPTIONS"} and not (request.method == "POST" and path.endswith("/ask")):
+                    return JSONResponse(status_code=403, content={"detail": "Viewer access is read-only in this workspace."})
+            elif path == "/api/projects" and request.method == "POST" and claims.get("role") == "viewer":
+                return JSONResponse(status_code=403, content={"detail": "Viewer accounts cannot create workspaces."})
+            if path.startswith("/api/brand/") and request.method not in {"GET", "HEAD", "OPTIONS"} and claims.get("role") != "owner":
+                return JSONResponse(status_code=403, content={"detail": "Only demo owners can manage brand governance."})
     return await call_next(request)
 
 
@@ -255,18 +288,27 @@ def get_project_or_404(project_id, db):
     return project
 
 @app.post("/api/projects")
-def create_project(payload: ProjectCreate, db: Session = Depends(get_db)):
+def create_project(payload: ProjectCreate, request: Request, db: Session = Depends(get_db)):
     if not payload.name.strip():
         raise HTTPException(400, "Project name is required")
     p = Project(name=payload.name.strip(), description=payload.description.strip())
     db.add(p); db.flush()
-    log_event(db, p.id, f'Workspace "{p.name}" created', "workspace_created")
+    claims = getattr(request.state, "auth", None) or {}
+    owner_email = str(claims.get("sub", os.getenv("DEMO_EMAIL", "demo-owner"))).strip().lower()
+    db.add(ProjectMember(project_id=p.id, email=owner_email, role="owner", added_by=owner_email))
+    log_event(db, p.id, f'Workspace "{p.name}" created', "workspace_created", actor=owner_email)
     db.commit(); db.refresh(p)
     return project_dict(p)
 
 @app.get("/api/projects")
-def list_projects(db: Session = Depends(get_db)):
-    return [project_dict(p) for p in db.scalars(select(Project).order_by(Project.created_at.desc())).all()]
+def list_projects(request: Request, db: Session = Depends(get_db)):
+    if not os.getenv("AUTH_SECRET"):
+        rows = db.scalars(select(Project).order_by(Project.created_at.desc())).all()
+    else:
+        email = str((getattr(request.state, "auth", None) or {}).get("sub", "")).strip().lower()
+        ids = db.scalars(select(ProjectMember.project_id).where(ProjectMember.email == email)).all()
+        rows = db.scalars(select(Project).where(Project.id.in_(ids)).order_by(Project.created_at.desc())).all() if ids else []
+    return [project_dict(p) for p in rows]
 
 @app.get("/api/projects/{project_id}")
 def get_project(project_id: int, db: Session = Depends(get_db)):
@@ -278,6 +320,74 @@ def get_project(project_id: int, db: Session = Depends(get_db)):
             "documents": [{"id": d.id, "filename": d.filename, "uploaded_at": d.uploaded_at.isoformat()} for d in docs],
             "items": [item_dict(i) for i in items],
             "activity": [{"id": e.id, "event_type": e.event_type, "message": e.message, "actor": e.actor, "item_id": e.item_id, "created_at": e.created_at.isoformat()} for e in events]}
+
+def member_dict(row):
+    return {"id": row.id, "email": row.email, "role": row.role, "added_by": row.added_by,
+            "created_at": row.created_at.isoformat()}
+
+
+@app.get("/api/projects/{project_id}/members")
+def list_project_members(project_id: int, db: Session = Depends(get_db)):
+    get_project_or_404(project_id, db)
+    rows = db.scalars(select(ProjectMember).where(ProjectMember.project_id == project_id).order_by(ProjectMember.created_at.asc())).all()
+    return [member_dict(row) for row in rows]
+
+
+@app.post("/api/projects/{project_id}/members")
+def add_project_member(project_id: int, payload: dict, request: Request, db: Session = Depends(get_db)):
+    get_project_or_404(project_id, db)
+    email = str(payload.get("email", "")).strip().lower()
+    role = str(payload.get("role", "viewer")).strip().lower()
+    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+        raise HTTPException(400, "Enter a valid email address.")
+    if role not in {"editor", "viewer"}:
+        raise HTTPException(400, "New members can be editors or viewers.")
+    configured = {os.getenv(key, "").strip().lower() for key in ["DEMO_EMAIL", "DEMO_EDITOR_EMAIL", "DEMO_VIEWER_EMAIL"] if os.getenv(key, "").strip()}
+    if email not in configured:
+        raise HTTPException(400, "This email has no configured ContinuityAI login. Configure a demo account before assigning workspace access; no email invitation is sent.")
+    row = db.scalar(select(ProjectMember).where(ProjectMember.project_id == project_id, ProjectMember.email == email))
+    claims = getattr(request.state, "auth", None) or {}
+    if row:
+        row.role = role
+        action = "updated"
+    else:
+        row = ProjectMember(project_id=project_id, email=email, role=role, added_by=claims.get("sub", ""))
+        db.add(row)
+        action = "added"
+    log_event(db, project_id, f"Workspace member {email} {action} as {role}", f"member_{action}", actor=claims.get("sub", ""))
+    db.commit(); db.refresh(row)
+    return member_dict(row)
+
+
+@app.patch("/api/projects/{project_id}/members/{member_id}")
+def update_project_member(project_id: int, member_id: int, payload: dict, db: Session = Depends(get_db)):
+    row = db.get(ProjectMember, member_id)
+    if not row or row.project_id != project_id:
+        raise HTTPException(404, "Workspace member not found.")
+    role = str(payload.get("role", "")).strip().lower()
+    if role not in {"editor", "viewer"}:
+        raise HTTPException(400, "Role must be editor or viewer.")
+    if row.role == "owner":
+        raise HTTPException(400, "The workspace owner role cannot be changed in this demo.")
+    row.role = role
+    log_event(db, project_id, f"Workspace member {row.email} role changed to {role}", "member_role_updated")
+    db.commit(); db.refresh(row)
+    return member_dict(row)
+
+
+@app.delete("/api/projects/{project_id}/members/{member_id}")
+def remove_project_member(project_id: int, member_id: int, db: Session = Depends(get_db)):
+    row = db.get(ProjectMember, member_id)
+    if not row or row.project_id != project_id:
+        raise HTTPException(404, "Workspace member not found.")
+    if row.role == "owner":
+        raise HTTPException(400, "The workspace owner cannot be removed.")
+    email = row.email
+    db.delete(row)
+    log_event(db, project_id, f"Workspace member {email} removed", "member_removed")
+    db.commit()
+    return {"removed": member_id}
+
 
 @app.post("/api/projects/{project_id}/items")
 def create_knowledge_item(project_id: int, payload: KnowledgeCreate, db: Session = Depends(get_db)):
@@ -489,7 +599,7 @@ def handover(project_id: int, db: Session = Depends(get_db)):
 def require_share_owner(request: Request):
     if os.getenv("AUTH_SECRET"):
         claims = getattr(request.state, "auth", None) or {}
-        if claims.get("role") != "owner":
+        if getattr(request.state, "workspace_role", claims.get("role")) != "owner":
             raise HTTPException(403, "Only workspace owners can create or revoke handover links.")
 
 
