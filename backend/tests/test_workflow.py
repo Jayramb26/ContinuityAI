@@ -170,6 +170,38 @@ def test_owner_tracking_activity_and_handover_details(client):
     assert "Recent project activity" in exported.text
 
 
+def test_explicit_task_dependencies_validate_cycles_and_export(client):
+    project_id = create_project(client)
+    def task(title):
+        response = client.post(f"/api/projects/{project_id}/items", json={"category": "task", "title": title, "work_status": "open"})
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    first, second, third = task("Prepare database migration"), task("Deploy API"), task("Run smoke tests")
+    added = client.post(f"/api/items/{second['id']}/dependencies", json={"depends_on_item_id": first["id"]})
+    assert added.status_code == 200, added.text
+    assert added.json()["satisfied"] is False
+    assert added.json()["prerequisite_title"] == first["title"]
+    chained = client.post(f"/api/items/{third['id']}/dependencies", json={"depends_on_item_id": second["id"]})
+    assert chained.status_code == 200
+    assert client.post(f"/api/items/{first['id']}/dependencies", json={"depends_on_item_id": first["id"]}).status_code == 400
+    assert client.post(f"/api/items/{first['id']}/dependencies", json={"depends_on_item_id": third["id"]}).status_code == 400
+
+    handover = client.get(f"/api/projects/{project_id}/handover").json()
+    assert len(handover["task_dependencies"]) == 2
+    assert {x["id"] for x in handover["waiting_tasks"]} == {second["id"], third["id"]}
+    assert "waiting on prerequisites" in " ".join(handover["next_steps"])
+    assert client.patch(f"/api/items/{first['id']}", json={"work_status": "done"}).status_code == 200
+    handover = client.get(f"/api/projects/{project_id}/handover").json()
+    assert next(x for x in handover["task_dependencies"] if x["item_id"] == second["id"])["satisfied"] is True
+    assert {x["item_id"] for x in handover["task_dependencies"] if not x["satisfied"]} == {third["id"]}
+    exported = client.get(f"/api/projects/{project_id}/handover.md")
+    assert "## Task dependencies" in exported.text
+    assert "Deploy API" in exported.text and "Prepare database migration" in exported.text
+    assert client.delete(f"/api/items/{second['id']}/dependencies/{added.json()['id']}").status_code == 200
+    assert len(client.get(f"/api/projects/{project_id}/handover").json()["task_dependencies"]) == 1
+
+
 def test_brand_governance_rule_check_and_human_decision(client):
     required = client.post("/api/brand/guidelines", json={"name": "Required product name", "kind": "required_term", "content": "ContinuityAI", "severity": "critical"})
     assert required.status_code == 200, required.text

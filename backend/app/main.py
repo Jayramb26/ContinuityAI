@@ -11,7 +11,7 @@ from sqlalchemy import select, text, inspect
 from sqlalchemy.orm import Session
 from .database import SessionLocal
 from .database import Base, engine, get_db
-from .models import Project, SourceDocument, KnowledgeItem, ActivityEvent, BrandGuideline, BrandReview, ProjectMilestone, HandoverShare, ProjectMember, UserAccount, WorkspaceInvitation
+from .models import Project, SourceDocument, KnowledgeItem, ActivityEvent, BrandGuideline, BrandReview, ProjectMilestone, HandoverShare, ProjectMember, UserAccount, WorkspaceInvitation, TaskDependency
 from .schemas import ProjectCreate, ReviewUpdate, KnowledgeCreate, ActivityCreate, BrandGuidelineCreate, BrandDecision, MilestoneCreate, MilestoneUpdate
 from .ingestion import extract_text, chunks
 from .knowledge import heuristic_extract, ai_extract
@@ -80,7 +80,7 @@ async def demo_access_control(request: Request, call_next):
             if match:
                 project_id = int(match.group(1))
             else:
-                patterns = [(r"^/api/items/(\d+)$", KnowledgeItem), (r"^/api/milestones/(\d+)$", ProjectMilestone), (r"^/api/sources/(\d+)/review$", SourceDocument)]
+                patterns = [(r"^/api/items/(\d+)(?:/dependencies(?:/\d+)?)?$", KnowledgeItem), (r"^/api/milestones/(\d+)$", ProjectMilestone), (r"^/api/sources/(\d+)/review$", SourceDocument)]
                 for pattern, model in patterns:
                     found = re.match(pattern, path)
                     if found:
@@ -523,6 +523,75 @@ def create_knowledge_item(project_id: int, payload: KnowledgeCreate, db: Session
     return item_dict(item)
 
 
+def task_dependency_dict(row, db):
+    task = db.get(KnowledgeItem, row.item_id)
+    prerequisite = db.get(KnowledgeItem, row.depends_on_item_id)
+    if not task or not prerequisite:
+        return None
+    return {"id": row.id, "item_id": row.item_id, "depends_on_item_id": row.depends_on_item_id,
+        "task_title": task.title, "prerequisite_title": prerequisite.title,
+        "prerequisite_status": prerequisite.work_status, "satisfied": prerequisite.work_status == "done"}
+
+
+def would_create_dependency_cycle(project_id, item_id, prerequisite_id, db):
+    pending, visited = [prerequisite_id], set()
+    while pending:
+        current = pending.pop()
+        if current == item_id:
+            return True
+        if current in visited:
+            continue
+        visited.add(current)
+        pending.extend(db.scalars(select(TaskDependency.depends_on_item_id).where(
+            TaskDependency.project_id == project_id, TaskDependency.item_id == current
+        )).all())
+    return False
+
+
+@app.post("/api/items/{item_id}/dependencies")
+def add_task_dependency(item_id: int, payload: dict, db: Session = Depends(get_db)):
+    item = db.get(KnowledgeItem, item_id)
+    if not item or item.category != "task":
+        raise HTTPException(404, "Task not found.")
+    try:
+        prerequisite_id = int(payload.get("depends_on_item_id"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Choose a valid prerequisite task.")
+    prerequisite = db.get(KnowledgeItem, prerequisite_id)
+    if not prerequisite or prerequisite.category != "task" or prerequisite.project_id != item.project_id:
+        raise HTTPException(400, "Prerequisite must be another task in this workspace.")
+    if prerequisite.id == item.id:
+        raise HTTPException(400, "A task cannot depend on itself.")
+    existing = db.scalar(select(TaskDependency).where(
+        TaskDependency.item_id == item.id, TaskDependency.depends_on_item_id == prerequisite.id))
+    if existing:
+        raise HTTPException(409, "This task dependency already exists.")
+    if would_create_dependency_cycle(item.project_id, item.id, prerequisite.id, db):
+        raise HTTPException(400, "This dependency would create a circular task chain.")
+    row = TaskDependency(project_id=item.project_id, item_id=item.id, depends_on_item_id=prerequisite.id)
+    db.add(row)
+    log_event(db, item.project_id, f'Task "{item.title}" now depends on "{prerequisite.title}"', "task_dependency_added", item.id)
+    db.commit(); db.refresh(row)
+    return task_dependency_dict(row, db)
+
+
+@app.delete("/api/items/{item_id}/dependencies/{dependency_id}")
+def remove_task_dependency(item_id: int, dependency_id: int, db: Session = Depends(get_db)):
+    item = db.get(KnowledgeItem, item_id)
+    if not item or item.category != "task":
+        raise HTTPException(404, "Task not found.")
+    row = db.scalar(select(TaskDependency).where(
+        TaskDependency.id == dependency_id, TaskDependency.item_id == item_id,
+        TaskDependency.project_id == item.project_id))
+    if not row:
+        raise HTTPException(404, "Task dependency not found.")
+    prerequisite = db.get(KnowledgeItem, row.depends_on_item_id)
+    db.delete(row)
+    log_event(db, item.project_id, f'Task dependency removed: "{item.title}" no longer waits for "{prerequisite.title if prerequisite else "another task"}"', "task_dependency_removed", item.id)
+    db.commit()
+    return {"deleted": dependency_id}
+
+
 def milestone_dict(row, db):
     import json
     ids = json.loads(row.item_ids or "[]")
@@ -683,6 +752,9 @@ def handover(project_id: int, db: Session = Depends(get_db)):
     overdue = [i for i in tasks if i.due_date and i.due_date < datetime.now(timezone.utc).date().isoformat() and i.work_status != "done"]
     blocked = [i for i in items if i.work_status == "blocked"]
     open_tasks = [i for i in tasks if i.work_status != "done"]
+    dependency_rows = db.scalars(select(TaskDependency).where(TaskDependency.project_id == project_id).order_by(TaskDependency.id.asc())).all()
+    task_dependencies = [value for value in (task_dependency_dict(row, db) for row in dependency_rows) if value]
+    waiting_tasks = {value["item_id"] for value in task_dependencies if not value["satisfied"]}
     milestone_rows = db.scalars(select(ProjectMilestone).where(ProjectMilestone.project_id == project_id).order_by(ProjectMilestone.due_date.asc())).all()
     milestones = [milestone_dict(row, db) for row in milestone_rows]
     today = datetime.now(timezone.utc).date().isoformat()
@@ -697,6 +769,7 @@ def handover(project_id: int, db: Session = Depends(get_db)):
     if overdue: next_steps.append(f"Resolve {len(overdue)} overdue task(s)")
     if blocked: next_steps.append(f"Unblock {len(blocked)} blocked item(s)")
     if overdue_milestones: next_steps.append(f"Review {len(overdue_milestones)} overdue milestone(s)")
+    if waiting_tasks: next_steps.append(f"Resolve {len(waiting_tasks)} task(s) waiting on prerequisites")
     if not next_steps: next_steps.append("Review the latest activity and confirm the handover is current")
     return {"project": project_dict(p), "generated_at": datetime.now(timezone.utc).isoformat(),
         "source_count": len(docs), "approved_count": len(approved), "review_count": len(gaps),
@@ -705,6 +778,8 @@ def handover(project_id: int, db: Session = Depends(get_db)):
         "unassigned_tasks": [item_dict(i) for i in unassigned], "overdue_tasks": [item_dict(i) for i in overdue],
         "blocked_items": [item_dict(i) for i in blocked], "open_tasks": [item_dict(i) for i in open_tasks],
         "milestones": milestones, "overdue_milestones": overdue_milestones,
+        "task_dependencies": task_dependencies,
+        "waiting_tasks": [item_dict(i) for i in tasks if i.id in waiting_tasks],
         "activity": [{"id": e.id, "event_type": e.event_type, "message": e.message, "actor": e.actor, "created_at": e.created_at.isoformat()} for e in events],
         "next_steps": next_steps}
 
@@ -810,6 +885,12 @@ def handover_markdown(project_id: int, db: Session = Depends(get_db)):
     if not data.get("milestones"): lines.append("- No milestones recorded.")
     for m in data.get("milestones", []):
         lines.append(f"- **{m['name']}** | Status: {m['status']} | Progress: {m['progress']}% ({m['completed_item_count']}/{m['linked_item_count']} linked tasks) | Owner: {m['owner'] or 'UNASSIGNED'} | Due: {m['due_date'] or 'Not set'}")
+    lines += ["", "## Task dependencies"]
+    dependencies = data.get("task_dependencies", [])
+    if not dependencies: lines.append("- No explicit task dependencies recorded.")
+    for dep in dependencies:
+        state = "satisfied" if dep["satisfied"] else "waiting"
+        lines.append("- **" + dep["task_title"] + "** depends on **" + dep["prerequisite_title"] + "** (" + state + "; prerequisite status: " + dep["prerequisite_status"] + ").")
     lines += ["", "## Unfinished work and ownership"]
     if not data["open_tasks"]: lines.append("- No unfinished tasks recorded.")
     for x in data["open_tasks"]:

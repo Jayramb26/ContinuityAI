@@ -275,6 +275,22 @@ function App() {
     } catch (e) { setError(e.message); }
   };
 
+  const addDependency = async (item, prerequisiteId) => {
+    if (!prerequisiteId) return;
+    try {
+      await req("/items/" + item.id + "/dependencies", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ depends_on_item_id: Number(prerequisiteId) }) });
+      await select(active); setTab("knowledge");
+      setNotice("Task dependency saved. Handover will show when the prerequisite is complete.");
+    } catch (e) { setError(e.message); }
+  };
+
+  const removeDependency = async (item, dependencyId) => {
+    try {
+      await req("/items/" + item.id + "/dependencies/" + dependencyId, { method: "DELETE" });
+      await select(active); setTab("knowledge"); setNotice("Task dependency removed.");
+    } catch (e) { setError(e.message); }
+  };
+
   const addWorkItem = async () => {
     const category = window.prompt("Type: decision, task, risk or question", "task");
     if (!category) return;
@@ -727,7 +743,7 @@ function App() {
                       <div className="knowledge-main">
                         <div className="item-meta"><span className={"category-tag category-" + item.category}>{item.category}</span><span className={"review-status status-" + item.status}>{item.status.replaceAll("_", " ")}</span>{item.verified && <span className="verified-label"><ShieldCheck size={12}/> Verified</span>}</div>
                         <h3>{item.title}</h3><p className="item-detail">{item.detail}</p>
-                        <div className="work-metadata"><label>Owner<input defaultValue={item.owner || ""} placeholder="Unassigned" onBlur={e => { if (e.target.value !== (item.owner || "")) updateWork(item, { owner: e.target.value }); }}/></label><label>Due date<input type="date" defaultValue={item.due_date || ""} onChange={e => updateWork(item, { due_date: e.target.value })}/></label><label>Priority<select value={item.priority || "medium"} onChange={e => updateWork(item, { priority: e.target.value })}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option></select></label><label>Work status<select value={item.work_status || "open"} onChange={e => updateWork(item, { work_status: e.target.value })}><option value="open">Open</option><option value="in_progress">In progress</option><option value="blocked">Blocked</option><option value="done">Done</option></select></label></div><div className="evidence-box"><span className="evidence-label">SOURCE EVIDENCE</span><p>{item.evidence || "Manually recorded item — no source excerpt attached."}</p><small><FileText size={12}/> {item.source_id ? "Document #" + item.source_id : "Manually added"}</small></div>
+                        <div className="work-metadata"><label>Owner<input defaultValue={item.owner || ""} placeholder="Unassigned" onBlur={e => { if (e.target.value !== (item.owner || "")) updateWork(item, { owner: e.target.value }); }}/></label><label>Due date<input type="date" defaultValue={item.due_date || ""} onChange={e => updateWork(item, { due_date: e.target.value })}/></label><label>Priority<select value={item.priority || "medium"} onChange={e => updateWork(item, { priority: e.target.value })}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option></select></label><label>Work status<select value={item.work_status || "open"} onChange={e => updateWork(item, { work_status: e.target.value })}><option value="open">Open</option><option value="in_progress">In progress</option><option value="blocked">Blocked</option><option value="done">Done</option></select></label></div>{item.category === "task" && <div className="task-dependency-panel"><div className="dependency-panel-heading"><b>Task dependencies</b><small>What must be completed before this task can proceed?</small></div>{(handover?.task_dependencies || []).filter(dep => dep.item_id === item.id).map(dep => <div className={"dependency-chip " + (dep.satisfied ? "dependency-done" : "dependency-waiting")} key={dep.id}><span><b>{dep.prerequisite_title}</b><small>{dep.satisfied ? "Prerequisite complete" : "Waiting · " + dep.prerequisite_status.replaceAll("_"," ")}</small></span><button type="button" aria-label={"Remove dependency on " + dep.prerequisite_title} onClick={() => removeDependency(item, dep.id)}>Remove</button></div>)}<select aria-label={"Add prerequisite for " + item.title} defaultValue="" onChange={e => { const value = e.target.value; e.target.value = ""; if (value) addDependency(item, value); }}><option value="">+ Add prerequisite task…</option>{items.filter(other => other.category === "task" && other.id !== item.id && !(handover?.task_dependencies || []).some(dep => dep.item_id === item.id && dep.depends_on_item_id === other.id)).map(other => <option key={other.id} value={other.id}>{other.title} · {other.work_status || "open"}</option>)}</select></div>}<div className="evidence-box"><span className="evidence-label">SOURCE EVIDENCE</span><p>{item.evidence || "Manually recorded item — no source excerpt attached."}</p><small><FileText size={12}/> {item.source_id ? "Document #" + item.source_id : "Manually added"}</small></div>
                       </div>
                       <div className="item-actions"><button className="small-button" onClick={() => edit(item)}>Edit</button><button className="small-button approve-button" onClick={() => review(item, "approved")}><CheckCircle2 size={13}/> Approve</button><button className="small-button" onClick={() => review(item, "rejected")}>Reject</button><button className="small-button" onClick={() => review(item, "unknown")}>Unknown</button></div>
                     </article>
