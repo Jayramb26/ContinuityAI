@@ -29,6 +29,10 @@ with engine.begin() as conn:
         if name not in existing:
             conn.execute(text(f"ALTER TABLE knowledge_items ADD COLUMN {name} {sql_type} NOT NULL DEFAULT {default}"))
 
+    existing_sources = {c["name"] for c in inspect(engine).get_columns("source_documents")}
+    if "last_reviewed_at" not in existing_sources:
+        conn.execute(text("ALTER TABLE source_documents ADD COLUMN last_reviewed_at DATETIME"))
+
     existing_events = {c["name"] for c in inspect(engine).get_columns("activity_events")}
     if "actor" not in existing_events:
         conn.execute(text("ALTER TABLE activity_events ADD COLUMN actor VARCHAR(180) NOT NULL DEFAULT 'demo-owner'"))
@@ -524,7 +528,45 @@ def handover_markdown(project_id: int, db: Session = Depends(get_db)):
 def project_intelligence(project_id: int, db: Session = Depends(get_db)):
     get_project_or_404(project_id, db)
     items = db.scalars(select(KnowledgeItem).where(KnowledgeItem.project_id == project_id)).all()
-    return analyze_project([item_dict(i) for i in items])
+    docs = db.scalars(select(SourceDocument).where(SourceDocument.project_id == project_id).order_by(SourceDocument.uploaded_at.desc())).all()
+    now = datetime.now(timezone.utc)
+    freshness = []
+    for doc in docs:
+        uploaded = doc.uploaded_at.replace(tzinfo=timezone.utc) if doc.uploaded_at.tzinfo is None else doc.uploaded_at
+        reviewed = doc.last_reviewed_at
+        if reviewed and reviewed.tzinfo is None:
+            reviewed = reviewed.replace(tzinfo=timezone.utc)
+        reference = reviewed or uploaded
+        age_days = max(0, (now - reference).days)
+        freshness.append({
+            "source_id": doc.id, "filename": doc.filename,
+            "uploaded_at": doc.uploaded_at.isoformat(),
+            "last_reviewed_at": doc.last_reviewed_at.isoformat() if doc.last_reviewed_at else None,
+            "age_days_since_check": age_days,
+            "status": "review_due" if age_days >= 90 else ("never_reviewed" if not reviewed else "recently_reviewed"),
+            "review_required": age_days >= 90 or reviewed is None,
+            "basis": "Upload date is used until a human records a review; age is a review reminder, not proof the document is outdated."
+        })
+    report = analyze_project([item_dict(i) for i in items])
+    report["source_freshness"] = freshness
+    report["counts"]["sources_never_reviewed"] = sum(1 for x in freshness if x["status"] == "never_reviewed")
+    report["counts"]["sources_review_due"] = sum(1 for x in freshness if x["status"] == "review_due")
+    return report
+
+
+@app.post("/api/sources/{source_id}/review")
+def mark_source_reviewed(source_id: int, db: Session = Depends(get_db)):
+    doc = db.get(SourceDocument, source_id)
+    if not doc:
+        raise HTTPException(404, "Source document not found")
+    doc.last_reviewed_at = datetime.now(timezone.utc)
+    log_event(db, doc.project_id, f'Source reviewed: {doc.filename}', "source_reviewed")
+    db.commit(); db.refresh(doc)
+    return {
+        "source_id": doc.id, "filename": doc.filename,
+        "last_reviewed_at": doc.last_reviewed_at.isoformat(),
+        "status": "recently_reviewed",
+    }
 
 
 @app.post("/api/projects/{project_id}/ask")
