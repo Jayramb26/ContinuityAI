@@ -1,5 +1,6 @@
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+import re
 import os
 import hashlib
 import secrets
@@ -8,8 +9,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, JSONResponse
 from sqlalchemy import select, text, inspect
 from sqlalchemy.orm import Session
+from .database import SessionLocal
 from .database import Base, engine, get_db
-from .models import Project, SourceDocument, KnowledgeItem, ActivityEvent, BrandGuideline, BrandReview, ProjectMilestone, HandoverShare
+from .models import Project, SourceDocument, KnowledgeItem, ActivityEvent, BrandGuideline, BrandReview, ProjectMilestone, HandoverShare, ProjectMember
 from .schemas import ProjectCreate, ReviewUpdate, KnowledgeCreate, ActivityCreate, BrandGuidelineCreate, BrandDecision, MilestoneCreate, MilestoneUpdate
 from .ingestion import extract_text, chunks
 from .knowledge import heuristic_extract, ai_extract
@@ -45,10 +47,11 @@ app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_credenti
 
 @app.middleware("http")
 async def demo_access_control(request: Request, call_next):
-    """Protect API data routes when AUTH_SECRET is configured."""
+    """Require project membership and enforce workspace-specific roles."""
     path = request.url.path
     public_paths = {"/api/health", "/api/auth/config", "/api/auth/login"}
-    if path.startswith("/api/") and path not in public_paths and request.method != "OPTIONS":
+    shared_public = path.startswith("/api/shared/")
+    if path.startswith("/api/") and path not in public_paths and not shared_public and request.method != "OPTIONS":
         secret = os.getenv("AUTH_SECRET", "")
         if secret:
             authorization = request.headers.get("Authorization", "")
@@ -56,17 +59,33 @@ async def demo_access_control(request: Request, call_next):
             claims = verify_token(token, secret)
             if not claims:
                 return JSONResponse(status_code=401, content={"detail": "Sign in to access this workspace."})
-            role = claims.get("role", "viewer")
-            # Viewers may read and ask questions, but cannot mutate workspace data.
-            # The normalized integration endpoint has its own independent shared-secret check.
-            read_only_post = path.endswith("/ask")
-            integration_event = path.endswith("/integrations/events")
-            if request.method not in {"GET", "HEAD", "OPTIONS"} and role == "viewer" and not (request.method == "POST" and (read_only_post or integration_event)):
-                return JSONResponse(status_code=403, content={"detail": "Viewer access is read-only."})
-            # Only owners can change global brand rules and review decisions.
-            if path.startswith("/api/brand/") and request.method not in {"GET", "HEAD", "OPTIONS"} and role != "owner":
-                return JSONResponse(status_code=403, content={"detail": "Only workspace owners can manage brand governance."})
             request.state.auth = claims
+            email = str(claims.get("sub", "")).strip().lower()
+            project_id = None
+            match = re.match(r"^/api/projects/(\d+)(?:/|$)", path)
+            if match:
+                project_id = int(match.group(1))
+            else:
+                patterns = [(r"^/api/items/(\d+)$", KnowledgeItem), (r"^/api/milestones/(\d+)$", ProjectMilestone), (r"^/api/sources/(\d+)/review$", SourceDocument)]
+                for pattern, model in patterns:
+                    found = re.match(pattern, path)
+                    if found:
+                        with SessionLocal() as lookup:
+                            row = lookup.get(model, int(found.group(1)))
+                            project_id = row.project_id if row else None
+                        break
+            if project_id is not None:
+                with SessionLocal() as lookup:
+                    member = lookup.scalar(select(ProjectMember).where(ProjectMember.project_id == project_id, ProjectMember.email == email))
+                if not member:
+                    return JSONResponse(status_code=404, content={"detail": "You do not have access to this workspace."})
+                request.state.workspace_role = member.role
+                if (path.endswith("/members") or "/members/" in path) and request.method not in {"GET", "HEAD"} and member.role != "owner":
+                    return JSONResponse(status_code=403, content={"detail": "Only workspace owners can manage members."})
+                if member.role == "viewer" and request.method not in {"GET", "HEAD", "OPTIONS"} and not (request.method == "POST" and path.endswith("/ask")):
+                    return JSONResponse(status_code=403, content={"detail": "Viewer access is read-only in this workspace."})
+            elif path.startswith("/api/brand/") and request.method not in {"GET", "HEAD", "OPTIONS"} and claims.get("role") != "owner":
+                return JSONResponse(status_code=403, content={"detail": "Only demo owners can manage brand governance."})
     return await call_next(request)
 
 
@@ -260,13 +279,22 @@ def create_project(payload: ProjectCreate, db: Session = Depends(get_db)):
         raise HTTPException(400, "Project name is required")
     p = Project(name=payload.name.strip(), description=payload.description.strip())
     db.add(p); db.flush()
-    log_event(db, p.id, f'Workspace "{p.name}" created', "workspace_created")
+    claims = getattr(request.state, "auth", None) or {}
+    owner_email = str(claims.get("sub", os.getenv("DEMO_EMAIL", "demo-owner"))).strip().lower()
+    db.add(ProjectMember(project_id=p.id, email=owner_email, role="owner", added_by=owner_email))
+    log_event(db, p.id, f'Workspace "{p.name}" created', "workspace_created", actor=owner_email)
     db.commit(); db.refresh(p)
     return project_dict(p)
 
 @app.get("/api/projects")
-def list_projects(db: Session = Depends(get_db)):
-    return [project_dict(p) for p in db.scalars(select(Project).order_by(Project.created_at.desc())).all()]
+def list_projects(request: Request, db: Session = Depends(get_db)):
+    if not os.getenv("AUTH_SECRET"):
+        rows = db.scalars(select(Project).order_by(Project.created_at.desc())).all()
+    else:
+        email = str((getattr(request.state, "auth", None) or {}).get("sub", "")).strip().lower()
+        ids = db.scalars(select(ProjectMember.project_id).where(ProjectMember.email == email)).all()
+        rows = db.scalars(select(Project).where(Project.id.in_(ids)).order_by(Project.created_at.desc())).all() if ids else []
+    return [project_dict(p) for p in rows]
 
 @app.get("/api/projects/{project_id}")
 def get_project(project_id: int, db: Session = Depends(get_db)):
