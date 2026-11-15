@@ -776,15 +776,18 @@ function App() {
 
               {tab === "members" && (
                 <section className="surface-card knowledge-card">
-                  <div className="section-heading"><div><span className="eyebrow">WORKSPACE PERMISSIONS</span><h2>Team access</h2><p className="section-subtitle">Membership and permissions apply to this workspace only. Assign only people with an already configured ContinuityAI demo login.</p></div><Users size={22}/></div>
-                  <form className="brand-rule-form" onSubmit={addMember}>
-                    <label>Account email<input type="email" value={memberEmail} onChange={e => setMemberEmail(e.target.value)} placeholder="editor@continuityai.app" required/></label>
+                  <div className="section-heading"><div><span className="eyebrow">WORKSPACE PERMISSIONS</span><h2>Team access</h2><p className="section-subtitle">Invite teammates with a private, single-use link. Access is scoped to this workspace.</p></div><Users size={22}/></div>
+                  <form className="brand-rule-form" onSubmit={createInvitation}>
+                    <label>Teammate email<input type="email" value={memberEmail} onChange={e => setMemberEmail(e.target.value)} placeholder="teammate@example.com" required/></label>
                     <label>Workspace role<select value={memberRole} onChange={e => setMemberRole(e.target.value)}><option value="editor">Editor — can update project knowledge</option><option value="viewer">Viewer — read-only access</option></select></label>
-                    <button className="primary-button" type="submit"><Users size={15}/> Add or update member</button>
+                    <button className="primary-button" type="submit"><Users size={15}/> Create invitation link</button>
                   </form>
+                  {createdInvitation && <div className="evidence-box"><b>Invitation link for {createdInvitation.email}</b><p>This secret link can be used once and expires {new Date(createdInvitation.expires_at).toLocaleString()}.</p><div className="share-link-row"><input readOnly value={createdInvitation.url}/><button type="button" className="small-button" onClick={() => navigator.clipboard.writeText(createdInvitation.url)}>Copy link</button></div></div>}
+                  <div className="section-heading"><h3>Pending invitations</h3><button type="button" className="small-button" onClick={loadInvitations}>Refresh</button></div>
+                  {invitations.length ? invitations.map(invite => <div className="gap-row" key={invite.id}><ExternalLink size={16}/><div><b>{invite.email}</b><small>{invite.role} · Expires {new Date(invite.expires_at).toLocaleDateString()}</small></div><button type="button" className="small-button" onClick={() => revokeInvitation(invite.id)}>Revoke</button></div>) : <div className="inline-empty">No pending invitations.</div>}
                   <div className="section-heading"><h3>Current members</h3><button type="button" className="small-button" onClick={loadMembers}>Refresh</button></div>
                   {members.length ? members.map(member => <div className="gap-row" key={member.id}><Users size={16}/><div><b>{member.email}</b><small>{member.role} · Added by {member.added_by || "workspace setup"} · {new Date(member.created_at).toLocaleDateString()}</small></div>{member.role !== "owner" && <><select aria-label={"Role for " + member.email} value={member.role} onChange={e => updateMemberRole(member,e.target.value)}><option value="editor">Editor</option><option value="viewer">Viewer</option></select><button type="button" className="small-button" onClick={() => removeMember(member)}>Remove</button></>}</div>) : <div className="inline-empty">No team members loaded yet. Refresh to view this workspace roster.</div>}
-                  <p className="brand-disclaimer">Demo limitation: this adds an existing configured login to this workspace; it does not send an email invitation or create an account. Owners manage the roster, editors can update project data, and viewers are read-only. This is not yet a production identity provider.</p>
+                  <p className="brand-disclaimer">ContinuityAI creates the invitation link but does not email it automatically. Send it only to the invited email address. Links expire after 7 days, can be accepted once, and grant editor or viewer access only.</p>
                 </section>
               )}
 
