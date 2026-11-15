@@ -259,3 +259,7 @@
 
 /* Handover change digest */
 .ack-change-digest{margin:10px 0;padding:10px 12px;border:1px solid #ead6ad;border-radius:9px;background:#fffaf1}.ack-change-digest>b{display:block;margin-bottom:7px;color:#8a5a12;font-size:10px}.ack-change-digest>div{display:flex;flex-direction:column;gap:3px;padding:6px 0;border-top:1px solid #f0e5d2}.ack-change-digest>div span{font-size:11px;color:#536575}.ack-change-digest>div small{font-size:9px;color:#8b9aa5}
+
+
+/* Designated handover successor */
+.handover-assignment-panel{margin:0 0 18px;padding:18px;border:1px solid var(--border,#e5eaf0);border-radius:14px;background:var(--surface,#fff)}.handover-assignment-form{display:grid;grid-template-columns:minmax(180px,1.4fr) minmax(160px,1fr) auto;gap:12px;align-items:end}.handover-assignment-form label{display:flex;flex-direction:column;gap:7px;font-size:12px;font-weight:650;color:var(--text,#263445)}.handover-assignment-form input,.handover-assignment-form select{width:100%;min-height:40px;padding:8px 10px;border:1px solid var(--border,#dce3eb);border-radius:8px;background:var(--surface,#fff);color:inherit}@media(max-width:680px){.handover-assignment-form{grid-template-columns:1fr}.handover-assignment-form button{width:100%}}

@@ -8,6 +8,8 @@ class Project(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(180))
     description: Mapped[str] = mapped_column(Text, default="")
+    assigned_successor_email: Mapped[str] = mapped_column(String(180), default="")
+    acceptance_due_date: Mapped[str] = mapped_column(String(20), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     documents = relationship("SourceDocument", back_populates="project", cascade="all, delete-orphan")
     items = relationship("KnowledgeItem", back_populates="project", cascade="all, delete-orphan")
