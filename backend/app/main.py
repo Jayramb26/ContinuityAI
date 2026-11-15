@@ -8,8 +8,8 @@ from fastapi.responses import Response, JSONResponse
 from sqlalchemy import select, text, inspect
 from sqlalchemy.orm import Session
 from .database import Base, engine, get_db
-from .models import Project, SourceDocument, KnowledgeItem, ActivityEvent, BrandGuideline, BrandReview
-from .schemas import ProjectCreate, ReviewUpdate, KnowledgeCreate, ActivityCreate, BrandGuidelineCreate, BrandDecision
+from .models import Project, SourceDocument, KnowledgeItem, ActivityEvent, BrandGuideline, BrandReview, ProjectMilestone
+from .schemas import ProjectCreate, ReviewUpdate, KnowledgeCreate, ActivityCreate, BrandGuidelineCreate, BrandDecision, MilestoneCreate, MilestoneUpdate
 from .ingestion import extract_text, chunks
 from .knowledge import heuristic_extract, ai_extract
 from .intelligence import analyze_project, answer_project_question
@@ -293,6 +293,92 @@ def create_knowledge_item(project_id: int, payload: KnowledgeCreate, db: Session
     log_event(db, project_id, f'{payload.category.title()} added: {item.title}', "item_created", item.id)
     db.commit(); db.refresh(item)
     return item_dict(item)
+
+
+def milestone_dict(row, db):
+    import json
+    ids = json.loads(row.item_ids or "[]")
+    linked = [db.get(KnowledgeItem, item_id) for item_id in ids]
+    linked = [item for item in linked if item and item.project_id == row.project_id]
+    total = len(linked)
+    completed = sum(1 for item in linked if item.work_status == "done")
+    return {"id": row.id, "project_id": row.project_id, "name": row.name,
+        "description": row.description, "owner": row.owner or "", "due_date": row.due_date or "",
+        "status": row.status, "item_ids": [item.id for item in linked],
+        "linked_item_count": total, "completed_item_count": completed,
+        "progress": round(completed / total * 100) if total else 0,
+        "created_at": row.created_at.isoformat()}
+
+
+def validate_milestone_items(project_id, item_ids, db):
+    ids = list(dict.fromkeys(item_ids or []))
+    if ids:
+        found = db.scalars(select(KnowledgeItem).where(
+            KnowledgeItem.id.in_(ids), KnowledgeItem.project_id == project_id
+        )).all()
+        if len(found) != len(ids):
+            raise HTTPException(400, "Every linked item must belong to this project.")
+    return ids
+
+
+@app.get("/api/projects/{project_id}/milestones")
+def list_milestones(project_id: int, db: Session = Depends(get_db)):
+    get_project_or_404(project_id, db)
+    rows = db.scalars(select(ProjectMilestone).where(
+        ProjectMilestone.project_id == project_id
+    ).order_by(ProjectMilestone.due_date.asc(), ProjectMilestone.id.asc())).all()
+    return [milestone_dict(row, db) for row in rows]
+
+
+@app.post("/api/projects/{project_id}/milestones")
+def create_milestone(project_id: int, payload: MilestoneCreate, db: Session = Depends(get_db)):
+    get_project_or_404(project_id, db)
+    if not payload.name.strip():
+        raise HTTPException(400, "Milestone name is required.")
+    if payload.status not in {"planned", "in_progress", "blocked", "completed"}:
+        raise HTTPException(400, "Invalid milestone status.")
+    ids = validate_milestone_items(project_id, payload.item_ids, db)
+    import json
+    row = ProjectMilestone(project_id=project_id, name=payload.name.strip(),
+        description=payload.description.strip(), owner=payload.owner.strip(),
+        due_date=payload.due_date.strip(), status=payload.status, item_ids=json.dumps(ids))
+    db.add(row); db.flush()
+    log_event(db, project_id, f'Milestone created: {row.name}', "milestone_created")
+    db.commit(); db.refresh(row)
+    return milestone_dict(row, db)
+
+
+@app.patch("/api/milestones/{milestone_id}")
+def update_milestone(milestone_id: int, payload: MilestoneUpdate, db: Session = Depends(get_db)):
+    row = db.get(ProjectMilestone, milestone_id)
+    if not row:
+        raise HTTPException(404, "Milestone not found.")
+    changes = payload.model_dump(exclude_unset=True)
+    if "name" in changes and changes["name"] is not None and not changes["name"].strip():
+        raise HTTPException(400, "Milestone name cannot be empty.")
+    if "status" in changes and changes["status"] not in {"planned", "in_progress", "blocked", "completed"}:
+        raise HTTPException(400, "Invalid milestone status.")
+    if "item_ids" in changes and changes["item_ids"] is not None:
+        import json
+        changes["item_ids"] = json.dumps(validate_milestone_items(row.project_id, changes["item_ids"], db))
+    for key, value in changes.items():
+        if value is not None:
+            setattr(row, key, value.strip() if isinstance(value, str) else value)
+    log_event(db, row.project_id, f'Milestone updated: {row.name}', "milestone_updated")
+    db.commit(); db.refresh(row)
+    return milestone_dict(row, db)
+
+
+@app.delete("/api/milestones/{milestone_id}")
+def delete_milestone(milestone_id: int, db: Session = Depends(get_db)):
+    row = db.get(ProjectMilestone, milestone_id)
+    if not row:
+        raise HTTPException(404, "Milestone not found.")
+    project_id, name = row.project_id, row.name
+    db.delete(row)
+    log_event(db, project_id, f'Milestone deleted: {name}', "milestone_deleted")
+    db.commit()
+    return {"deleted": milestone_id}
 
 @app.post("/api/projects/{project_id}/activity")
 def add_activity(project_id: int, payload: ActivityCreate, db: Session = Depends(get_db)):
