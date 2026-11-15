@@ -115,6 +115,7 @@ def auth_login(payload: dict, db: Session = Depends(get_db)):
     secret = os.getenv("AUTH_SECRET", "")
     if not secret:
         raise HTTPException(503, "Authentication is not configured")
+    UserAccount.__table__.create(bind=engine, checkfirst=True)
     email = str(payload.get("email", "")).strip().lower()
     password = str(payload.get("password", ""))
     if not email or not password:
