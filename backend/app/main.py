@@ -36,6 +36,18 @@ with engine.begin() as conn:
     if "last_reviewed_at" not in existing_sources:
         conn.execute(text("ALTER TABLE source_documents ADD COLUMN last_reviewed_at DATETIME"))
 
+    # Existing demo workspaces remain accessible to the configured owner after membership enforcement.
+    legacy_owner = os.getenv("DEMO_EMAIL", "").strip().lower()
+    if legacy_owner:
+        conn.execute(text("""
+            INSERT INTO project_members (project_id, email, role, added_by, created_at)
+            SELECT p.id, :email, 'owner', :email, CURRENT_TIMESTAMP
+            FROM projects p
+            WHERE NOT EXISTS (
+                SELECT 1 FROM project_members pm WHERE pm.project_id = p.id
+            )
+        """), {"email": legacy_owner})
+
     existing_events = {c["name"] for c in inspect(engine).get_columns("activity_events")}
     if "actor" not in existing_events:
         conn.execute(text("ALTER TABLE activity_events ADD COLUMN actor VARCHAR(180) NOT NULL DEFAULT 'demo-owner'"))
