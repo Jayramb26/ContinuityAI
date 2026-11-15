@@ -507,3 +507,37 @@ def test_share_expiry_and_viewer_cannot_manage_links(client, monkeypatch):
         headers = {"Authorization": "Bearer " + login.json()["access_token"]}
         assert anonymous.post(f"/api/projects/{project_id}/shares", json={"expires_in_hours": 24}, headers=headers).status_code == 403
         assert anonymous.get(f"/api/projects/{project_id}/shares", headers=headers).status_code == 403
+
+
+def test_workspace_membership_is_project_scoped_and_roles_are_enforced(client, monkeypatch):
+    owner_project = create_project(client)
+    other_project = create_project(client)
+    monkeypatch.setenv("DEMO_EDITOR_EMAIL", "editor@continuityai.app")
+    monkeypatch.setenv("DEMO_EDITOR_PASSWORD", "EditorPassForTests!")
+    owner_token = client.headers.get("Authorization")
+    added = client.post(f"/api/projects/{owner_project}/members", json={"email":"editor@continuityai.app","role":"editor"})
+    assert added.status_code == 200, added.text
+    assert added.json()["role"] == "editor"
+
+    login = client.post("/api/auth/login", json={"email":"editor@continuityai.app","password":"EditorPassForTests!"})
+    assert login.status_code == 200, login.text
+    editor = TestClient(app)
+    editor.headers.update({"Authorization":"Bearer " + login.json()["access_token"]})
+    assert editor.get(f"/api/projects/{owner_project}").status_code == 200
+    assert editor.get(f"/api/projects/{other_project}").status_code == 404
+    assert editor.post(f"/api/projects/{owner_project}/items", json={"category":"task","title":"Editor task"}).status_code == 200
+    assert editor.post(f"/api/projects/{owner_project}/members", json={"email":"demo@continuityai.app","role":"viewer"}).status_code == 403
+
+    client.headers.update({"Authorization":owner_token})
+    changed = client.patch(f"/api/projects/{owner_project}/members/{added.json()['id']}", json={"role":"viewer"})
+    assert changed.status_code == 200
+    assert editor.post(f"/api/projects/{owner_project}/items", json={"category":"task","title":"Blocked write"}).status_code == 403
+
+
+def test_member_assignment_requires_existing_demo_account_and_owner_cannot_be_removed(client):
+    project_id = create_project(client)
+    unknown = client.post(f"/api/projects/{project_id}/members", json={"email":"unknown@example.com","role":"viewer"})
+    assert unknown.status_code == 400
+    members = client.get(f"/api/projects/{project_id}/members").json()
+    assert len(members) == 1 and members[0]["role"] == "owner"
+    assert client.delete(f"/api/projects/{project_id}/members/{members[0]['id']}").status_code == 400
