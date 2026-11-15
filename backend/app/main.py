@@ -92,7 +92,7 @@ async def demo_access_control(request: Request, call_next):
                 if not member:
                     return JSONResponse(status_code=404, content={"detail": "You do not have access to this workspace."})
                 request.state.workspace_role = member.role
-                if (path.endswith("/members") or "/members/" in path) and request.method not in {"GET", "HEAD"} and member.role != "owner":
+                if (path.endswith("/members") or "/members/" in path or "/invitations" in path) and member.role != "owner":
                     return JSONResponse(status_code=403, content={"detail": "Only workspace owners can manage members."})
                 if member.role == "viewer" and request.method not in {"GET", "HEAD", "OPTIONS"} and not (request.method == "POST" and path.endswith("/ask")):
                     return JSONResponse(status_code=403, content={"detail": "Viewer access is read-only in this workspace."})
