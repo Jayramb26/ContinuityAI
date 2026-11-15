@@ -38,6 +38,13 @@ function App() {
   const [assistantQuestion, setAssistantQuestion] = useState("");
   const [assistantAnswer, setAssistantAnswer] = useState(null);
   const [assistantBusy, setAssistantBusy] = useState(false);
+  const [milestoneName, setMilestoneName] = useState("");
+  const [milestoneDescription, setMilestoneDescription] = useState("");
+  const [milestoneOwner, setMilestoneOwner] = useState("");
+  const [milestoneDueDate, setMilestoneDueDate] = useState("");
+  const [milestoneStatus, setMilestoneStatus] = useState("planned");
+  const [milestoneItemIds, setMilestoneItemIds] = useState([]);
+  const [milestoneBusy, setMilestoneBusy] = useState(false);
   const [auditLog, setAuditLog] = useState([]);
   const [authChecked, setAuthChecked] = useState(false);
   const [authEnabled, setAuthEnabled] = useState(false);
@@ -295,6 +302,33 @@ function App() {
     } catch (e) { setError(e.message); }
   };
 
+
+  const createMilestone = async (event) => {
+    event.preventDefault();
+    if (!active || !milestoneName.trim()) return;
+    setMilestoneBusy(true); setError("");
+    try {
+      await req("/projects/" + active + "/milestones", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: milestoneName.trim(), description: milestoneDescription,
+          owner: milestoneOwner, due_date: milestoneDueDate, status: milestoneStatus,
+          item_ids: milestoneItemIds })
+      });
+      setMilestoneName(""); setMilestoneDescription(""); setMilestoneOwner("");
+      setMilestoneDueDate(""); setMilestoneStatus("planned"); setMilestoneItemIds([]);
+      await select(active); setTab("milestones"); setNotice("Milestone created and added to the handover.");
+    } catch (e) { setError(e.message); }
+    finally { setMilestoneBusy(false); }
+  };
+
+  const updateMilestoneStatus = async (milestone, status) => {
+    try {
+      await req("/milestones/" + milestone.id, { method: "PATCH",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
+      await select(active); setTab("milestones"); setNotice("Milestone status updated.");
+    } catch (e) { setError(e.message); }
+  };
+
   const askAssistant = async (event) => {
     event.preventDefault();
     if (!assistantQuestion.trim() || !active) return;
@@ -323,6 +357,7 @@ function App() {
   const tabs = [
     { id: "overview", label: "Overview", icon: LayoutDashboard },
     { id: "knowledge", label: "Knowledge review", icon: ClipboardCheck },
+    { id: "milestones", label: "Milestones", icon: Layers3 },
     { id: "sources", label: "Sources", icon: FileText },
     { id: "handover", label: "Handover", icon: ShieldCheck },
     { id: "intelligence", label: "Intelligence", icon: Network },
@@ -534,6 +569,38 @@ function App() {
                     </article>
                   )) : <div className="inline-empty"><Search size={20}/><span>No matching knowledge items. Try changing your filters or upload another source.</span></div>}
                 </section>
+              )}
+
+
+              {tab === "milestones" && (
+                <div className="overview-grid">
+                  <section className="surface-card knowledge-card">
+                    <div className="section-heading"><div><span className="eyebrow">DELIVERY PLAN</span><h2>Project milestones</h2><p className="section-subtitle">Group project tasks into outcomes, assign an owner and track delivery progress.</p></div><span className="total-pill">{handover?.milestones?.length || 0} milestones</span></div>
+                    {(handover?.milestones || []).length ? handover.milestones.map(milestone => (
+                      <article className="knowledge-item" key={milestone.id}>
+                        <div className="item-meta"><span className="category-tag category-task">milestone</span><span className={"review-status status-" + (milestone.status === "completed" ? "approved" : milestone.status === "blocked" ? "rejected" : "needs_review")}>{milestone.status.replaceAll("_", " ")}</span>{milestone.due_date && <span className="total-pill">Due {milestone.due_date}</span>}</div>
+                        <h3>{milestone.name}</h3><p className="item-detail">{milestone.description || "No milestone description provided."}</p>
+                        <div className="mini-progress"><div><span>{milestone.owner || "Unassigned"} · {milestone.completed_item_count}/{milestone.linked_item_count} linked tasks complete</span><b>{milestone.progress}%</b></div><div className="progress-track"><span style={{width: milestone.progress + "%"}}/></div></div>
+                        {milestone.item_ids?.length > 0 && <div className="evidence-box"><span className="evidence-label">LINKED TASKS</span>{milestone.item_ids.map(id => { const item = items.find(row => row.id === id); return item ? <p key={id}>{item.title} · {item.work_status?.replaceAll("_"," ") || "open"}</p> : null; })}</div>}
+                        <label className="work-metadata"><span>Update status<select value={milestone.status} onChange={e => updateMilestoneStatus(milestone,e.target.value)}><option value="planned">Planned</option><option value="in_progress">In progress</option><option value="blocked">Blocked</option><option value="completed">Completed</option></select></span></label>
+                      </article>
+                    )) : <div className="inline-empty"><Layers3 size={20}/>No milestones yet. Create one to group related tasks and track delivery.</div>}
+                    {(handover?.overdue_milestones || []).length > 0 && <div className="toast toast-error"><AlertTriangle size={16}/>{handover.overdue_milestones.length} milestone(s) are overdue and need attention.</div>}
+                  </section>
+                  <section className="surface-card knowledge-card">
+                    <div className="section-heading"><div><span className="eyebrow">NEW DELIVERY CHECKPOINT</span><h2>Create milestone</h2><p className="section-subtitle">Link existing tasks from this workspace. Progress is calculated from their work status.</p></div></div>
+                    <form className="brand-rule-form" onSubmit={createMilestone}>
+                      <label>Milestone name<input value={milestoneName} onChange={e => setMilestoneName(e.target.value)} placeholder="e.g. Round 3 demo ready" required maxLength={180}/></label>
+                      <label>Description<textarea rows={3} value={milestoneDescription} onChange={e => setMilestoneDescription(e.target.value)} placeholder="Describe the outcome or acceptance criteria."/></label>
+                      <div className="brand-form-row"><label>Owner<input value={milestoneOwner} onChange={e => setMilestoneOwner(e.target.value)} placeholder="Person responsible"/></label><label>Due date<input type="date" value={milestoneDueDate} onChange={e => setMilestoneDueDate(e.target.value)}/></label></div>
+                      <label>Initial status<select value={milestoneStatus} onChange={e => setMilestoneStatus(e.target.value)}><option value="planned">Planned</option><option value="in_progress">In progress</option><option value="blocked">Blocked</option><option value="completed">Completed</option></select></label>
+                      <label>Link tasks from this workspace</label>
+                      <div className="milestone-task-picker">{items.filter(item => item.category === "task").map(item => <label key={item.id}><input type="checkbox" checked={milestoneItemIds.includes(item.id)} onChange={e => setMilestoneItemIds(prev => e.target.checked ? [...prev,item.id] : prev.filter(id => id !== item.id))}/><span>{item.title}<small>{item.work_status?.replaceAll("_"," ") || "open"}</small></span></label>)}</div>
+                      {!items.some(item => item.category === "task") && <p className="section-subtitle">Add task items in Knowledge review before linking them here.</p>}
+                      <button className="primary-button" type="submit" disabled={milestoneBusy || !milestoneName.trim()}><Plus size={15}/>{milestoneBusy ? "Creating…" : "Create milestone"}</button>
+                    </form>
+                  </section>
+                </div>
               )}
 
               {tab === "sources" && (
