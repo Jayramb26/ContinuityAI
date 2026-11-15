@@ -221,8 +221,8 @@ def accept_workspace_invitation(payload: dict, db: Session = Depends(get_db)):
             raise HTTPException(400, "Create a password with at least 12 characters.")
         account = UserAccount(email=invitation.email, password_hash=hash_password(password))
         db.add(account)
-    elif password:
-        raise HTTPException(409, "An account already exists for this email. Sign in to accept the invitation.")
+    elif not password or not verify_password(password, account.password_hash):
+        raise HTTPException(401, "Enter the existing account password to accept this invitation.")
     member = db.scalar(select(ProjectMember).where(
         ProjectMember.project_id == invitation.project_id,
         ProjectMember.email == invitation.email))
