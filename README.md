@@ -24,11 +24,11 @@ The checks are deliberately transparent: required/prohibited terms and asset ide
 
 ## Round 3 commitments and delivery status
 
-These are the three commitments recorded in the Round 2 submission. The current implementation delivers useful parts of each, but the limitations below remain part of the product disclosure.
+These are the three commitments recorded in the Round 2 submission. The current implementation delivers useful parts of each, with the following limitations kept explicit.
 
 1. **Advanced Evidence Intelligence and Conflict Detection — partially delivered.** Every extracted candidate retains a verbatim evidence excerpt and source-document ID. The Intelligence view flags explicit dependency phrases, possible decision conflicts using shared terms plus opposing negation, and gaps such as missing task owners/due dates or unreviewed candidates. These are explainable review prompts, not semantic contradiction proof. Semantic RAG, stale-source detection and robust claim-entailment verification remain future work.
-2. **Secure Access Control and Auditable Knowledge Management — partially delivered.** The Render Blueprint provisions a generated signing secret and a shared judge demo-owner login. When `AUTH_SECRET` is configured, API data routes require a signed, expiring bearer token. The Audit Log records activity type, actor label and timestamp. This is a demo access gate, not production multi-user security: per-workspace RBAC, user provisioning, individual attribution, revocable handover links and malware scanning are not implemented.
-3. **Intelligent Handover and Project Continuity Tracking — partially delivered.** Work items carry owner, due date, priority and work status. Handover highlights unassigned, overdue and blocked work, review gaps, activity and recommended next actions, and exports Markdown. The Q&A view retrieves source excerpts and labels their review state. Change-aware knowledge updates and a milestone/dependency graph remain future work.
+2. **Secure Access Control and Auditable Knowledge Management — partially delivered.** When `AUTH_SECRET` is configured, API data routes require signed, expiring bearer tokens. Workspaces support owner/editor/viewer membership, owner-managed one-time invitations, password-hashed user accounts, revocable expiring read-only handover links, and an activity audit log. Invitation links are shared manually; email verification, automated delivery, password reset, rate limiting, individual session revocation and malware scanning are not implemented. This remains a demo access system, not production identity management.
+3. **Intelligent Handover and Project Continuity Tracking — partially delivered.** Work items carry owner, due date, priority and work status; workspaces also support milestones with status, owner, due date and linked tasks. Handover highlights unassigned, overdue and blocked work, review gaps, activity and recommended next actions, and exports Markdown. The Q&A view retrieves source excerpts and labels their review state. A full dependency graph and change-aware knowledge updates remain future work.
 
 The normalized integration-event endpoint is a supporting capture adapter, not one of the three Round 2 commitments. It can record events from a trusted provider adapter; provider-specific OAuth/webhook mapping and signature verification are not included.
 
@@ -78,7 +78,7 @@ Evidence remains attached to candidate knowledge items. Human approval is requir
 
 ## Roadmap
 
-- **Next:** add revocable, scoped, read-only handover links; multi-user accounts and per-workspace viewer/editor/owner permissions; named actor attribution.
+- **Next:** add automated invitation email delivery and verification, password reset, session revocation, durable managed PostgreSQL/object storage, and stronger operational controls.
 - **Evidence quality:** semantic retrieval, source versioning, stale-information detection, claim-to-evidence entailment checks and reviewer resolution workflows for contradictions.
 - **Continuity:** explicit dependency graph, milestone tracking, change-aware re-review when source material changes, and handover templates.
 - **Integrations:** provider-native GitHub webhooks with signature verification, then Slack and issue-tracker adapters.
@@ -125,11 +125,11 @@ VITE_API_URL=http://localhost:8000/api
 
 The Render Blueprint configures the shared judge demo-owner account. The API also supports optional role-specific demo accounts through `DEMO_EDITOR_EMAIL`, `DEMO_EDITOR_PASSWORD`, `DEMO_VIEWER_EMAIL` and `DEMO_VIEWER_PASSWORD`. The existing `DEMO_EMAIL` / `DEMO_PASSWORD` account remains the owner for backwards compatibility. All accounts use the same `AUTH_SECRET` and receive signed, expiring bearer tokens.
 
-- **Owner:** full demo access, including brand guideline and review management.
-- **Editor:** can create and update project knowledge and handover data; cannot manage global brand governance rules.
-- **Viewer:** read-only project access and source Q&A; cannot mutate workspace data.
+- **Owner:** full control of the assigned workspace, including member and invitation management.
+- **Editor:** can create and update assigned workspace knowledge and handover data; cannot manage workspace membership or global brand governance rules.
+- **Viewer:** read-only access to assigned workspace data and source Q&A.
 
-Set a long random `AUTH_SECRET` and distinct strong passwords for each configured account. These are application-wide demo role gates, not true per-workspace membership/RBAC: there is no user provisioning, workspace-specific role assignment, individual session revocation or production identity provider. The shared demo account is intended only for synthetic data.
+The configured demo owner and optional demo editor/viewer accounts remain available. Workspace invitations are email-bound, single-use, expire after seven days, and can be revoked by the owner. New invitees create a password (minimum 12 characters); existing accounts must prove their password. Passwords are stored as PBKDF2-HMAC-SHA256 hashes. Invitation URLs are bearer secrets and must be shared privately. The app does not send invitation emails or verify mailbox ownership. Set a strong `AUTH_SECRET` and distinct strong demo passwords; use synthetic data only.
 
 ## Optional LLM extraction
 
@@ -156,14 +156,14 @@ Do not claim the public demo is live until these checks pass.
 
 ## Important demo and security limitations
 
-- The Render Blueprint enables a single shared demo login using a generated API signing secret. The visible judge credentials are `demo@continuityai.app` / `ContinuityDemo2026!`. This is a shared demo gate, not production identity management: user provisioning, per-workspace RBAC, named individual attribution, and individual session revocation are not implemented. Do not put confidential or personal project information in a public deployment.
+- The Render Blueprint provisions a generated API signing secret and a shared demo-owner login. The visible judge credentials are `demo@continuityai.app` / `ContinuityDemo2026!`. Workspace membership and invitation onboarding are implemented, but email verification/delivery, password reset, rate limiting and individual session revocation are not. This is not production identity management. Do not put confidential or personal project information in a public deployment.
 - The Render Blueprint uses SQLite by default. Free service storage may be ephemeral, so data can be lost on restart or redeploy. Use persistent PostgreSQL and appropriate file storage for a durable deployment.
 - Uploads are limited to 10 MB per file. Supported formats are PDF, DOCX, TXT and Markdown.
 - Rule-based extraction searches for explicit decision/action/risk/question cues and can miss implicit context. Owner and due-date extraction is conservative and only attempts to capture explicitly written names and ISO dates; review every candidate.
 - LLM extraction is optional. If enabled, data is sent to the configured provider; review its data-handling terms before use.
 - Evidence substring validation does not perform semantic entailment. The Intelligence tab flags only explicit rule-based dependency cues and narrow possible contradictions; it can miss implicit relationships and can produce false positives.
 - The readiness percentage is an illustrative checklist indicator, not a validated project-health score.
-- The audit log records project actions and a shared demo-owner actor label. It does not provide individually attributable multi-user audit history. Revocable controlled sharing, malware scanning and real-time collaboration are not implemented.
+- The audit log records project actions with actor email where available. Invitation and handover-share actions are also logged. Bearer share links are read-only, scoped to one workspace, expiring and revocable. Malware scanning and real-time collaboration are not implemented.
 - Provider-specific OAuth, direct GitHub/Slack/Teams/email integrations, and automated webhook signature verification are not implemented. The authenticated normalized-event intake is a connector adapter endpoint; it requires a server-side shared secret.
 
 ## API endpoints
@@ -172,6 +172,10 @@ Do not claim the public demo is live until these checks pass.
 - `GET /api/brand/reviews`, `POST /api/brand/reviews`, `PATCH /api/brand/reviews/{id}`
 - `GET /api/health`
 - `GET /api/auth/config`, `POST /api/auth/login`, `GET /api/auth/me`
+- `POST /api/invitations/accept`
+- `POST /api/projects/{id}/invitations`, `GET /api/projects/{id}/invitations`, `DELETE /api/projects/{id}/invitations/{invitation_id}`
+- Workspace membership management: `GET/POST/DELETE /api/projects/{id}/members` (see API docs for request schemas)
+- Handover share management and public read-only share routes (see API docs)
 - `GET /api/projects`
 - `POST /api/projects`
 - `GET /api/projects/{id}`
