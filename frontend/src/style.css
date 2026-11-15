@@ -247,3 +247,7 @@
 .ack-current-status b,.ack-current-status small{display:block}.ack-current-status b{font-size:12px;color:#28796e}.ack-current-status small,.ack-response small{font-size:10px;color:#8795a2;margin-top:4px}.ack-current-status p,.ack-response p{font-size:11px;color:#526778;white-space:pre-wrap;margin:8px 0 0}
 .ack-response{padding:10px 0;border-top:1px solid #e5eeec}.ack-response>div{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.ack-response b{font-size:11px;color:#354e60}.ack-status{font-size:9px;font-weight:800;border-radius:20px;padding:4px 8px}.ack-status.accepted{background:#e2f3ed;color:#28796e}.ack-status.follow-up{background:#fff0df;color:#a66a28}
 @media(max-width:600px){.ack-actions{flex-direction:column}.ack-actions button{width:100%}}
+
+
+/* Handover receipt coverage: distinguish members still awaiting a response. */
+.ack-coverage-summary{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 14px}.ack-coverage-summary span{padding:8px 11px;border:1px solid #e5ecef;border-radius:8px;background:#fff;color:#718391;font-size:10px}.ack-coverage-summary b{color:#36586a;font-size:13px;margin-right:4px}.ack-status.pending{background:#edf1f4;color:#647786}.ack-response>div>small{font-size:9px;color:#8795a2;text-transform:capitalize}
