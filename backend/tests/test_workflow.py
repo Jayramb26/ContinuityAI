@@ -541,3 +541,58 @@ def test_member_assignment_requires_existing_demo_account_and_owner_cannot_be_re
     members = client.get(f"/api/projects/{project_id}/members").json()
     assert len(members) == 1 and members[0]["role"] == "owner"
     assert client.delete(f"/api/projects/{project_id}/members/{members[0]['id']}").status_code == 400
+
+
+def test_workspace_invitation_creates_account_and_grants_scoped_access(client):
+    project_id = create_project(client)
+    created = client.post(f"/api/projects/{project_id}/invitations",
+        json={"email": "new.member@example.com", "role": "editor"})
+    assert created.status_code == 200, created.text
+    invitation = created.json()
+    assert invitation["expires_in_days"] == 7
+    assert "token" in invitation
+
+    accepted = client.post("/api/invitations/accept",
+        json={"token": invitation["token"], "password": "StrongPassword2026!"})
+    assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["email"] == "new.member@example.com"
+    assert accepted.json()["role"] == "editor"
+
+    member_headers = {"Authorization": "Bearer " + accepted.json()["access_token"]}
+    with TestClient(app) as member:
+        assert member.get(f"/api/projects/{project_id}", headers=member_headers).status_code == 200
+        assert member.post(f"/api/projects/{project_id}/items",
+            json={"category": "task", "title": "Invitee task"}, headers=member_headers).status_code == 200
+        assert member.post("/api/auth/login",
+            json={"email": "new.member@example.com", "password": "StrongPassword2026!"}).status_code == 200
+
+    reused = client.post("/api/invitations/accept",
+        json={"token": invitation["token"], "password": "StrongPassword2026!"})
+    assert reused.status_code == 404
+
+
+def test_workspace_invitation_revocation_and_expiry(client):
+    from datetime import datetime, timedelta, timezone
+    from app.database import SessionLocal
+    from app.models import WorkspaceInvitation
+    project_id = create_project(client)
+    created = client.post(f"/api/projects/{project_id}/invitations",
+        json={"email": "revoked@example.com", "role": "viewer"})
+    assert created.status_code == 200
+    invitation_id = created.json()["id"]
+    assert client.delete(f"/api/projects/{project_id}/invitations/{invitation_id}").status_code == 200
+    assert client.post("/api/invitations/accept",
+        json={"token": created.json()["token"], "password": "StrongPassword2026!"}).status_code == 404
+
+    second = client.post(f"/api/projects/{project_id}/invitations",
+        json={"email": "expired@example.com", "role": "viewer"}).json()
+    db = SessionLocal()
+    try:
+        row = db.query(WorkspaceInvitation).filter(WorkspaceInvitation.id == second["id"]).one()
+        row.expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+        db.commit()
+    finally:
+        db.close()
+    expired = client.post("/api/invitations/accept",
+        json={"token": second["token"], "password": "StrongPassword2026!"})
+    assert expired.status_code == 410
