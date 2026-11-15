@@ -478,3 +478,32 @@ def test_handover_share_expiry_and_owner_only_controls(client, monkeypatch):
         viewer = anonymous.post("/api/auth/login", json={"email": "demo@continuityai.app", "password": "ContinuityDemo2026!"})
         assert viewer.status_code == 200
 
+
+
+def test_share_expiry_and_viewer_cannot_manage_links(client, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    from app.database import SessionLocal
+    from app.models import HandoverShare
+    project_id = create_project(client)
+    created = client.post(f"/api/projects/{project_id}/shares", json={"expires_in_hours": 24})
+    assert created.status_code == 200
+    token = created.json()["token"]
+
+    db = SessionLocal()
+    try:
+        row = db.query(HandoverShare).filter(HandoverShare.id == created.json()["id"]).one()
+        row.expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+        db.commit()
+    finally:
+        db.close()
+    expired = client.get(f"/api/shared/{token}")
+    assert expired.status_code == 410
+
+    monkeypatch.setenv("DEMO_VIEWER_EMAIL", "viewer@continuityai.app")
+    monkeypatch.setenv("DEMO_VIEWER_PASSWORD", "ViewerPassForTests!")
+    with TestClient(app) as anonymous:
+        login = anonymous.post("/api/auth/login", json={"email": "viewer@continuityai.app", "password": "ViewerPassForTests!"})
+        assert login.status_code == 200
+        headers = {"Authorization": "Bearer " + login.json()["access_token"]}
+        assert anonymous.post(f"/api/projects/{project_id}/shares", json={"expires_in_hours": 24}, headers=headers).status_code == 403
+        assert anonymous.get(f"/api/projects/{project_id}/shares", headers=headers).status_code == 403
