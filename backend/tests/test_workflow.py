@@ -662,6 +662,7 @@ def test_handover_acknowledgement_is_member_scoped_and_audited(client, monkeypat
     assert initial.status_code == 200
     assert initial.json()["items"] == []
     assert initial.json()["current_user_email"] == "successor@continuityai.app"
+    assert {member["email"] for member in initial.json()["members"]} == {"demo@continuityai.app", "successor@continuityai.app"}
 
     missing_note = successor.post(f"/api/projects/{project_id}/acknowledgements",
         json={"status": "needs_follow_up", "note": " "})
@@ -682,6 +683,8 @@ def test_handover_acknowledgement_is_member_scoped_and_audited(client, monkeypat
     assert len(rows) == 1
     assert rows[0]["status"] == "accepted"
     assert rows[0]["note"] == ""
+    owner_view = client.get(f"/api/projects/{project_id}/acknowledgements").json()
+    assert len(owner_view["members"]) == 2
     assert client.get(f"/api/projects/{other_project_id}/acknowledgements").json()["items"] == []
     activity = client.get(f"/api/projects/{project_id}").json()["activity"]
     assert any("requested handover clarification" in event["message"] for event in activity)
