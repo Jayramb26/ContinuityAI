@@ -51,6 +51,16 @@ class KnowledgeItem(Base):
     project = relationship("Project", back_populates="items")
 
 
+class TaskDependency(Base):
+    __tablename__ = "task_dependencies"
+    __table_args__ = (UniqueConstraint("item_id", "depends_on_item_id", name="uq_task_dependency_pair"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"))
+    item_id: Mapped[int] = mapped_column(ForeignKey("knowledge_items.id"))
+    depends_on_item_id: Mapped[int] = mapped_column(ForeignKey("knowledge_items.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
 class BrandGuideline(Base):
     __tablename__ = "brand_guidelines"
     id: Mapped[int] = mapped_column(primary_key=True)
