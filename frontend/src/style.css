@@ -160,12 +160,13 @@
 .auth-card .toast{margin:14px 0}
 
 
-.milestone-task-picker{display:grid;gap:8px;max-height:240px;overflow:auto;padding:12px;border:1px solid var(--border,#e5e7eb);border-radius:12px;background:var(--surface,#fff)}
-.milestone-task-picker label{display:flex;align-items:flex-start;gap:10px;padding:8px;border-radius:8px;cursor:pointer}
-.milestone-task-picker label:hover{background:rgba(120,130,150,.08)}
-.milestone-task-picker input{width:16px;height:16px;margin-top:3px;accent-color:var(--accent,#4f46e5)}
-.milestone-task-picker span{display:grid;gap:3px;font-size:13px;font-weight:600}
-.milestone-task-picker small{font-size:11px;font-weight:400;color:var(--muted,#6b7280);text-transform:capitalize}
+.milestone-task-picker{display:grid;gap:6px;max-height:260px;overflow:auto;padding:10px;border:1px solid var(--border,#e5e7eb);border-radius:12px;background:var(--surface,#fff)}
+.milestone-task-option{display:flex;align-items:center;gap:10px;min-width:0;padding:9px 10px;border-radius:8px;cursor:pointer;transition:background .15s}
+.milestone-task-option:hover{background:rgba(120,130,150,.10)}
+.milestone-task-option input[type="checkbox"]{appearance:auto;-webkit-appearance:checkbox;display:block;flex:0 0 18px;width:18px!important;min-width:18px;height:18px;margin:0;padding:0!important;border:initial;border-radius:3px;background:initial;accent-color:var(--accent,#4f46e5);cursor:pointer;pointer-events:auto}
+.milestone-task-option label{display:flex;flex:1;min-width:0;align-items:center;padding:0;margin:0;color:inherit;font-size:13px;font-weight:600;cursor:pointer;pointer-events:auto}
+.milestone-task-option span{display:grid;gap:3px;min-width:0;overflow-wrap:anywhere;font-size:13px;font-weight:600}
+.milestone-task-option small{font-size:11px;font-weight:400;color:var(--muted,#6b7280);text-transform:capitalize}
 
 .share-panel { margin-top: 28px; padding-top: 24px; border-top: 1px solid var(--line, #e5e7eb); }
 .share-panel h2 { margin: 7px 0 8px; font-size: 20px; }
