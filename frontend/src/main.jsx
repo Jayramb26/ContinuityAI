@@ -526,15 +526,25 @@ function App() {
       <section className="auth-card">
         <div className="brand-mark"><BrainCircuit size={24}/></div>
         <span className="eyebrow">CODE TITANS · PROJECT KNOWLEDGE HUB</span>
-        <h1>Welcome back</h1>
-        <p>Sign in to access the workspace and its project knowledge.</p>
-        {loginError && <div className="toast toast-error">{loginError}</div>}
-        <form className="auth-form" onSubmit={signIn}>
-          <label>Email<input type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} required autoComplete="username"/></label>
-          <label>Password<input type="password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} required autoComplete="current-password"/></label>
-          <button className="primary-button" type="submit">Sign in to demo</button>
-        </form>
-        <div className="demo-credentials"><b>Shared judge demo account</b><span>Email: demo@continuityai.app</span><span>Password: ContinuityDemo2026!</span><small>Use only with synthetic demo data. The demo account is shared by evaluators.</small></div>
+        {inviteToken ? <>
+          <h1>Join a workspace</h1>
+          <p>Accept your one-time invitation. New accounts need a password with at least 12 characters; existing accounts must enter their current password.</p>
+          {loginError && <div className="toast toast-error">{loginError}</div>}
+          <form className="auth-form" onSubmit={acceptInvitation}>
+            <label>Account password<input type="password" value={invitePassword} onChange={e => setInvitePassword(e.target.value)} required autoComplete="new-password"/></label>
+            <button className="primary-button" type="submit">Accept invitation</button>
+          </form>
+        </> : <>
+          <h1>Welcome back</h1>
+          <p>Sign in to access the workspace and its project knowledge.</p>
+          {loginError && <div className="toast toast-error">{loginError}</div>}
+          <form className="auth-form" onSubmit={signIn}>
+            <label>Email<input type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} required autoComplete="username"/></label>
+            <label>Password<input type="password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} required autoComplete="current-password"/></label>
+            <button className="primary-button" type="submit">Sign in</button>
+          </form>
+          <div className="demo-credentials"><b>Shared judge demo account</b><span>Email: demo@continuityai.app</span><span>Password: ContinuityDemo2026!</span><small>Use only with synthetic demo data. The demo account is shared by evaluators.</small></div>
+        </>}
       </section>
     </div>
   );
