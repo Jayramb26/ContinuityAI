@@ -234,3 +234,16 @@
 .dependency-map-connector i{font-style:normal;font-size:18px;line-height:1}
 .dependency-map-edge.is-satisfied .dependency-map-connector{color:#4d9276}
 @media(max-width:650px){.dependency-map-edge{grid-template-columns:minmax(0,1fr);gap:5px}.dependency-map-connector{grid-template-columns:1fr auto 1fr;align-items:center}.dependency-map-connector:before,.dependency-map-connector:after{content:"";height:1px;width:100%;background:#e3e9ed}.dependency-map-connector i{transform:rotate(0deg)}}
+
+
+/* Handover receipt and successor response */
+.handover-acceptance-panel{margin:18px 0 22px;padding:18px;border:1px solid #dce9e6;border-radius:12px;background:#f9fcfb}
+.handover-acceptance-panel h3{font:800 16px Manrope;color:#294658;margin:0 0 5px}
+.handover-acceptance-panel h4{font:800 12px Manrope;color:#40586a;margin:18px 0 8px}
+.ack-note-label{display:flex;flex-direction:column;gap:7px;margin:13px 0 10px;font-size:11px;font-weight:700;color:#40586a}
+.ack-note-label textarea{width:100%;resize:vertical;border:1px solid #d8e4e4;border-radius:8px;padding:10px;font:12px 'DM Sans',sans-serif;color:#30495b;background:#fff}
+.ack-actions{display:flex;flex-wrap:wrap;gap:8px}
+.ack-current-status{padding:11px 13px;background:#fff;border:1px solid #dce9e6;border-radius:8px;margin:10px 0}
+.ack-current-status b,.ack-current-status small{display:block}.ack-current-status b{font-size:12px;color:#28796e}.ack-current-status small,.ack-response small{font-size:10px;color:#8795a2;margin-top:4px}.ack-current-status p,.ack-response p{font-size:11px;color:#526778;white-space:pre-wrap;margin:8px 0 0}
+.ack-response{padding:10px 0;border-top:1px solid #e5eeec}.ack-response>div{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.ack-response b{font-size:11px;color:#354e60}.ack-status{font-size:9px;font-weight:800;border-radius:20px;padding:4px 8px}.ack-status.accepted{background:#e2f3ed;color:#28796e}.ack-status.follow-up{background:#fff0df;color:#a66a28}
+@media(max-width:600px){.ack-actions{flex-direction:column}.ack-actions button{width:100%}}
