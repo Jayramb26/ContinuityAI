@@ -889,7 +889,7 @@ def handover(project_id: int, db: Session = Depends(get_db)):
         "acknowledged_at": successor_ack.updated_at.isoformat() if successor_ack else None,
         "acknowledgement_status": successor_ack.status if successor_ack else None
     }
-        milestone_rows = db.scalars(select(ProjectMilestone).where(ProjectMilestone.project_id == project_id).order_by(ProjectMilestone.due_date.asc())).all()
+    milestone_rows = db.scalars(select(ProjectMilestone).where(ProjectMilestone.project_id == project_id).order_by(ProjectMilestone.due_date.asc())).all()
     milestones = [milestone_dict(row, db) for row in milestone_rows]
     today = datetime.now(timezone.utc).date().isoformat()
     overdue_milestones = [m for m in milestones if m["due_date"] and m["due_date"] < today and m["status"] != "completed"]
