@@ -397,3 +397,33 @@ def test_milestone_tracking_links_tasks_and_calculates_progress(client):
     assert "## Project milestones" in client.get(f"/api/projects/{project_id}/handover.md").text
     assert any("Milestone created" in e["message"] for e in client.get(f"/api/projects/{project_id}").json()["activity"])
     assert client.delete(f"/api/milestones/{milestone['id']}").status_code == 200
+
+
+def test_source_freshness_requires_human_review_and_records_review(client):
+    project_id = create_project(client)
+    uploaded = client.post(
+        f"/api/projects/{project_id}/upload",
+        files={"file": ("plan.txt", b"Decision: Use FastAPI for the service layer and document the release approach.", "text/plain")},
+    )
+    assert uploaded.status_code == 200
+    source_id = uploaded.json()["document"]["id"]
+
+    report = client.get(f"/api/projects/{project_id}/intelligence").json()
+    assert report["counts"]["sources_never_reviewed"] == 1
+    source = report["source_freshness"][0]
+    assert source["source_id"] == source_id
+    assert source["status"] == "never_reviewed"
+    assert source["review_required"] is True
+    assert "not proof" in source["basis"]
+
+    reviewed = client.post(f"/api/sources/{source_id}/review")
+    assert reviewed.status_code == 200, reviewed.text
+    assert reviewed.json()["status"] == "recently_reviewed"
+    report_after = client.get(f"/api/projects/{project_id}/intelligence").json()
+    assert report_after["counts"]["sources_never_reviewed"] == 0
+    assert report_after["source_freshness"][0]["status"] == "recently_reviewed"
+
+
+def test_source_review_endpoint_rejects_unknown_source(client):
+    response = client.post("/api/sources/999999/review")
+    assert response.status_code == 404

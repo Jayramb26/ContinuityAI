@@ -294,6 +294,15 @@ function App() {
     catch (e) { setError(e.message); }
   };
 
+  const markSourceReviewed = async (sourceId) => {
+    try {
+      await req("/sources/" + sourceId + "/review", { method: "POST" });
+      await loadIntelligence();
+      await select(active);
+      setNotice("Source review recorded with a timestamp.");
+    } catch (e) { setError(e.message); }
+  };
+
   const loadIntelligence = async () => {
     if (!active) return;
     try {
@@ -636,6 +645,9 @@ function App() {
                       <article className="dashboard-stat"><div><strong>{intelligence.counts.possible_conflicts}</strong><b>Possible conflicts</b><small>Opposing decision language</small></div></article>
                       <article className="dashboard-stat"><div><strong>{intelligence.counts.knowledge_gaps}</strong><b>Knowledge gaps</b><small>Missing ownership, dates or review</small></div></article>
                     </div>
+                    <h3 className="subsection-title">Source freshness and review</h3>
+                    <p className="section-subtitle">A review reminder is based on the upload or last human review date. It does not claim that an older document is factually outdated.</p>
+                    {intelligence.source_freshness?.length ? intelligence.source_freshness.map(source => <div className="gap-row" key={source.source_id}><FileText size={16}/><div><b>{source.filename}</b><small>{source.status === "never_reviewed" ? "Never reviewed by a human" : source.status === "review_due" ? "Review due — last check was at least 90 days ago" : "Recently reviewed"} · {source.age_days_since_check} day(s)</small><small>{source.last_reviewed_at ? "Last reviewed " + new Date(source.last_reviewed_at).toLocaleString() : "Uploaded " + new Date(source.uploaded_at).toLocaleString()}</small></div>{source.review_required && <button className="small-button" onClick={() => markSourceReviewed(source.source_id)}>Mark reviewed</button>}</div>) : <div className="inline-empty">No source documents to review yet.</div>}
                     <h3 className="subsection-title">Possible decision conflicts</h3>
                     {intelligence.possible_conflicts.length ? intelligence.possible_conflicts.map((item,index) => <article className="knowledge-item" key={index}><div className="item-meta"><span className="category-tag category-risk">review required</span></div><h3>{item.message}</h3><p>{item.titles.join(" ↔ ")}</p><div className="evidence-box"><span className="evidence-label">CONFLICTING SOURCE EVIDENCE</span><p>{item.evidence.join(" / ")}</p><small>Shared terms: {item.shared_terms.join(", ")}</small></div><button className="small-button" onClick={() => setTab("knowledge")}>Review knowledge items</button></article>) : <div className="inline-empty"><CheckCircle2 size={18}/>No possible conflicts detected by the current rule set.</div>}
                     <h3 className="subsection-title">Dependency cues</h3>
