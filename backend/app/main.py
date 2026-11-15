@@ -307,6 +307,74 @@ def get_project(project_id: int, db: Session = Depends(get_db)):
             "items": [item_dict(i) for i in items],
             "activity": [{"id": e.id, "event_type": e.event_type, "message": e.message, "actor": e.actor, "item_id": e.item_id, "created_at": e.created_at.isoformat()} for e in events]}
 
+def member_dict(row):
+    return {"id": row.id, "email": row.email, "role": row.role, "added_by": row.added_by,
+            "created_at": row.created_at.isoformat()}
+
+
+@app.get("/api/projects/{project_id}/members")
+def list_project_members(project_id: int, db: Session = Depends(get_db)):
+    get_project_or_404(project_id, db)
+    rows = db.scalars(select(ProjectMember).where(ProjectMember.project_id == project_id).order_by(ProjectMember.created_at.asc())).all()
+    return [member_dict(row) for row in rows]
+
+
+@app.post("/api/projects/{project_id}/members")
+def add_project_member(project_id: int, payload: dict, request: Request, db: Session = Depends(get_db)):
+    get_project_or_404(project_id, db)
+    email = str(payload.get("email", "")).strip().lower()
+    role = str(payload.get("role", "viewer")).strip().lower()
+    if not re.fullmatch(r"[^@\\s]+@[^@\\s]+\\.[^@\\s]+", email):
+        raise HTTPException(400, "Enter a valid email address.")
+    if role not in {"editor", "viewer"}:
+        raise HTTPException(400, "New members can be editors or viewers.")
+    configured = {os.getenv(key, "").strip().lower() for key in ["DEMO_EMAIL", "DEMO_EDITOR_EMAIL", "DEMO_VIEWER_EMAIL"] if os.getenv(key, "").strip()}
+    if email not in configured:
+        raise HTTPException(400, "This email has no configured ContinuityAI login. Configure a demo account before assigning workspace access; no email invitation is sent.")
+    row = db.scalar(select(ProjectMember).where(ProjectMember.project_id == project_id, ProjectMember.email == email))
+    claims = getattr(request.state, "auth", None) or {}
+    if row:
+        row.role = role
+        action = "updated"
+    else:
+        row = ProjectMember(project_id=project_id, email=email, role=role, added_by=claims.get("sub", ""))
+        db.add(row)
+        action = "added"
+    log_event(db, project_id, f"Workspace member {email} {action} as {role}", f"member_{action}", actor=claims.get("sub", ""))
+    db.commit(); db.refresh(row)
+    return member_dict(row)
+
+
+@app.patch("/api/projects/{project_id}/members/{member_id}")
+def update_project_member(project_id: int, member_id: int, payload: dict, db: Session = Depends(get_db)):
+    row = db.get(ProjectMember, member_id)
+    if not row or row.project_id != project_id:
+        raise HTTPException(404, "Workspace member not found.")
+    role = str(payload.get("role", "")).strip().lower()
+    if role not in {"editor", "viewer"}:
+        raise HTTPException(400, "Role must be editor or viewer.")
+    if row.role == "owner":
+        raise HTTPException(400, "The workspace owner role cannot be changed in this demo.")
+    row.role = role
+    log_event(db, project_id, f"Workspace member {row.email} role changed to {role}", "member_role_updated")
+    db.commit(); db.refresh(row)
+    return member_dict(row)
+
+
+@app.delete("/api/projects/{project_id}/members/{member_id}")
+def remove_project_member(project_id: int, member_id: int, db: Session = Depends(get_db)):
+    row = db.get(ProjectMember, member_id)
+    if not row or row.project_id != project_id:
+        raise HTTPException(404, "Workspace member not found.")
+    if row.role == "owner":
+        raise HTTPException(400, "The workspace owner cannot be removed.")
+    email = row.email
+    db.delete(row)
+    log_event(db, project_id, f"Workspace member {email} removed", "member_removed")
+    db.commit()
+    return {"removed": member_id}
+
+
 @app.post("/api/projects/{project_id}/items")
 def create_knowledge_item(project_id: int, payload: KnowledgeCreate, db: Session = Depends(get_db)):
     get_project_or_404(project_id, db)
