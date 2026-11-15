@@ -121,9 +121,15 @@ Set `VITE_API_URL` in `frontend/.env` if the API is hosted elsewhere, for exampl
 VITE_API_URL=http://localhost:8000/api
 ```
 
-## Demo authentication
+## Demo authentication and role gates
 
-The Render Blueprint generates `AUTH_SECRET` and configures the shared judge demo account. If deploying manually, set all three backend variables: `AUTH_SECRET` (a long random secret), `DEMO_EMAIL=demo@continuityai.app`, and `DEMO_PASSWORD=ContinuityDemo2026!`. The frontend displays these shared credentials on the sign-in page. This demo account is intended only for synthetic data and is not a substitute for multi-user identity and workspace-level permissions.
+The Render Blueprint configures the shared judge demo-owner account. The API also supports optional role-specific demo accounts through `DEMO_EDITOR_EMAIL`, `DEMO_EDITOR_PASSWORD`, `DEMO_VIEWER_EMAIL` and `DEMO_VIEWER_PASSWORD`. The existing `DEMO_EMAIL` / `DEMO_PASSWORD` account remains the owner for backwards compatibility. All accounts use the same `AUTH_SECRET` and receive signed, expiring bearer tokens.
+
+- **Owner:** full demo access, including brand guideline and review management.
+- **Editor:** can create and update project knowledge and handover data; cannot manage global brand governance rules.
+- **Viewer:** read-only project access and source Q&A; cannot mutate workspace data.
+
+Set a long random `AUTH_SECRET` and distinct strong passwords for each configured account. These are application-wide demo role gates, not true per-workspace membership/RBAC: there is no user provisioning, workspace-specific role assignment, individual session revocation or production identity provider. The shared demo account is intended only for synthetic data.
 
 ## Optional LLM extraction
 
