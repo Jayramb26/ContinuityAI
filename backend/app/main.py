@@ -8,7 +8,7 @@ from fastapi.responses import Response, JSONResponse
 from sqlalchemy import select, text, inspect
 from sqlalchemy.orm import Session
 from .database import Base, engine, get_db
-from .models import Project, SourceDocument, KnowledgeItem, ActivityEvent, BrandGuideline, BrandReview, ProjectMilestone
+from .models import Project, SourceDocument, KnowledgeItem, ActivityEvent, BrandGuideline, BrandReview, ProjectMilestone, HandoverShare
 from .schemas import ProjectCreate, ReviewUpdate, KnowledgeCreate, ActivityCreate, BrandGuidelineCreate, BrandDecision, MilestoneCreate, MilestoneUpdate
 from .ingestion import extract_text, chunks
 from .knowledge import heuristic_extract, ai_extract
@@ -483,6 +483,89 @@ def handover(project_id: int, db: Session = Depends(get_db)):
         "milestones": milestones, "overdue_milestones": overdue_milestones,
         "activity": [{"id": e.id, "event_type": e.event_type, "message": e.message, "actor": e.actor, "created_at": e.created_at.isoformat()} for e in events],
         "next_steps": next_steps}
+
+
+def require_share_owner(request: Request):
+    if os.getenv("AUTH_SECRET"):
+        claims = getattr(request.state, "auth", None) or {}
+        if claims.get("role") != "owner":
+            raise HTTPException(403, "Only workspace owners can create or revoke handover links.")
+
+
+def active_share_from_token(token: str, db: Session):
+    if not token or len(token) > 200:
+        raise HTTPException(404, "Handover link is invalid or unavailable.")
+    digest = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    share = db.scalar(select(HandoverShare).where(HandoverShare.token_hash == digest))
+    if not share or share.revoked_at:
+        raise HTTPException(404, "Handover link is invalid or unavailable.")
+    expires = share.expires_at.replace(tzinfo=timezone.utc) if share.expires_at.tzinfo is None else share.expires_at
+    if expires <= datetime.now(timezone.utc):
+        raise HTTPException(410, "This handover link has expired.")
+    return share
+
+
+@app.post("/api/projects/{project_id}/shares")
+def create_handover_share(project_id: int, payload: dict, request: Request, db: Session = Depends(get_db)):
+    require_share_owner(request)
+    project = get_project_or_404(project_id, db)
+    try:
+        hours = int(payload.get("expires_in_hours", 72))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Expiry must be a whole number of hours.")
+    if hours < 1 or hours > 720:
+        raise HTTPException(400, "Share links must expire between 1 hour and 30 days.")
+    raw_token = secrets.token_urlsafe(32)
+    expires_at = datetime.now(timezone.utc) + __import__("datetime").timedelta(hours=hours)
+    claims = getattr(request.state, "auth", None) or {}
+    row = HandoverShare(project_id=project_id,
+        token_hash=hashlib.sha256(raw_token.encode("utf-8")).hexdigest(),
+        created_by=claims.get("sub", "demo-owner"), expires_at=expires_at)
+    db.add(row)
+    log_event(db, project_id, f"Read-only handover link created (expires {expires_at.isoformat()})", "handover_share_created", actor=claims.get("sub", "demo-owner"))
+    db.commit()
+    return {"id": row.id, "token": raw_token, "expires_at": expires_at.isoformat(),
+            "access": "read_only", "message": "Copy this link now. The secret token is shown only once."}
+
+
+@app.get("/api/projects/{project_id}/shares")
+def list_handover_shares(project_id: int, request: Request, db: Session = Depends(get_db)):
+    require_share_owner(request)
+    get_project_or_404(project_id, db)
+    rows = db.scalars(select(HandoverShare).where(HandoverShare.project_id == project_id)
+        .order_by(HandoverShare.created_at.desc())).all()
+    now = datetime.now(timezone.utc)
+    result = []
+    for row in rows:
+        expiry = row.expires_at.replace(tzinfo=timezone.utc) if row.expires_at.tzinfo is None else row.expires_at
+        result.append({"id": row.id, "created_by": row.created_by,
+            "created_at": row.created_at.isoformat(), "expires_at": row.expires_at.isoformat(),
+            "revoked_at": row.revoked_at.isoformat() if row.revoked_at else None,
+            "status": "revoked" if row.revoked_at else ("expired" if expiry <= now else "active")})
+    return result
+
+
+@app.delete("/api/projects/{project_id}/shares/{share_id}")
+def revoke_handover_share(project_id: int, share_id: int, request: Request, db: Session = Depends(get_db)):
+    require_share_owner(request)
+    row = db.get(HandoverShare, share_id)
+    if not row or row.project_id != project_id:
+        raise HTTPException(404, "Handover link not found.")
+    if not row.revoked_at:
+        row.revoked_at = datetime.now(timezone.utc)
+        claims = getattr(request.state, "auth", None) or {}
+        log_event(db, project_id, "Read-only handover link revoked", "handover_share_revoked", actor=claims.get("sub", "demo-owner"))
+        db.commit()
+    return {"id": row.id, "status": "revoked", "revoked_at": row.revoked_at.isoformat()}
+
+
+@app.get("/api/shared/{token}")
+def read_shared_handover(token: str, db: Session = Depends(get_db)):
+    share = active_share_from_token(token, db)
+    data = handover(share.project_id, db)
+    return {"share": {"expires_at": share.expires_at.isoformat(), "access": "read_only"},
+            "handover": data}
+
 
 @app.get("/api/projects/{project_id}/handover.md")
 def handover_markdown(project_id: int, db: Session = Depends(get_db)):
