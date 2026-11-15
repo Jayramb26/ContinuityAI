@@ -427,3 +427,83 @@ def test_source_freshness_requires_human_review_and_records_review(client):
 def test_source_review_endpoint_rejects_unknown_source(client):
     response = client.post("/api/sources/999999/review")
     assert response.status_code == 404
+
+
+def test_handover_share_is_read_only_expires_and_can_be_revoked(client, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    from app.models import HandoverShare
+    import hashlib
+    project_id = create_project(client)
+    approved = client.post(f"/api/projects/{project_id}/items", json={
+        "category": "decision", "title": "Use FastAPI", "detail": "Backend decision"
+    }).json()
+    client.patch(f"/api/items/{approved['id']}", json={"status": "approved", "verified": True})
+
+    created = client.post(f"/api/projects/{project_id}/shares", json={"expires_in_hours": 24})
+    assert created.status_code == 200, created.text
+    share = created.json()
+    assert share["access"] == "read_only"
+    assert share["token"]
+
+    # Only a hash is persisted; the raw bearer token is not stored.
+    stored = client.get(f"/api/projects/{project_id}/shares").json()
+    assert stored[0]["status"] == "active"
+    assert "token" not in stored[0]
+    row = client.get(f"/api/shared/{share['token']}")
+    assert row.status_code == 200, row.text
+    assert row.json()["handover"]["categories"]["decision"][0]["title"] == "Use FastAPI"
+
+    assert client.get("/api/shared/not-a-valid-token").status_code == 404
+    revoked = client.delete(f"/api/projects/{project_id}/shares/{share['id']}")
+    assert revoked.status_code == 200
+    assert client.get(f"/api/shared/{share['token']}").status_code == 404
+    assert client.get(f"/api/projects/{project_id}/shares").json()[0]["status"] == "revoked"
+
+
+def test_handover_share_expiry_and_owner_only_controls(client, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    from app.models import HandoverShare
+    import hashlib
+    project_id = create_project(client)
+    invalid = client.post(f"/api/projects/{project_id}/shares", json={"expires_in_hours": 721})
+    assert invalid.status_code == 400
+    created = client.post(f"/api/projects/{project_id}/shares", json={"expires_in_hours": 1}).json()
+    row = client.get(f"/api/projects/{project_id}/shares").json()[0]
+    assert row["status"] == "active"
+    share_row = client.get(f"/api/shared/{created['token']}")
+    assert share_row.status_code == 200
+
+    with TestClient(app) as anonymous:
+        assert anonymous.get(f"/api/projects/{project_id}/shares").status_code == 401
+        viewer = anonymous.post("/api/auth/login", json={"email": "demo@continuityai.app", "password": "ContinuityDemo2026!"})
+        assert viewer.status_code == 200
+
+
+
+def test_share_expiry_and_viewer_cannot_manage_links(client, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    from app.database import SessionLocal
+    from app.models import HandoverShare
+    project_id = create_project(client)
+    created = client.post(f"/api/projects/{project_id}/shares", json={"expires_in_hours": 24})
+    assert created.status_code == 200
+    token = created.json()["token"]
+
+    db = SessionLocal()
+    try:
+        row = db.query(HandoverShare).filter(HandoverShare.id == created.json()["id"]).one()
+        row.expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+        db.commit()
+    finally:
+        db.close()
+    expired = client.get(f"/api/shared/{token}")
+    assert expired.status_code == 410
+
+    monkeypatch.setenv("DEMO_VIEWER_EMAIL", "viewer@continuityai.app")
+    monkeypatch.setenv("DEMO_VIEWER_PASSWORD", "ViewerPassForTests!")
+    with TestClient(app) as anonymous:
+        login = anonymous.post("/api/auth/login", json={"email": "viewer@continuityai.app", "password": "ViewerPassForTests!"})
+        assert login.status_code == 200
+        headers = {"Authorization": "Bearer " + login.json()["access_token"]}
+        assert anonymous.post(f"/api/projects/{project_id}/shares", json={"expires_in_hours": 24}, headers=headers).status_code == 403
+        assert anonymous.get(f"/api/projects/{project_id}/shares", headers=headers).status_code == 403
