@@ -49,6 +49,10 @@ function App() {
   const [members, setMembers] = useState([]);
   const [memberEmail, setMemberEmail] = useState("");
   const [memberRole, setMemberRole] = useState("viewer");
+  const [invitations, setInvitations] = useState([]);
+  const [createdInvitation, setCreatedInvitation] = useState(null);
+  const [inviteToken] = useState(() => new URLSearchParams(window.location.search).get("invite") || "");
+  const [invitePassword, setInvitePassword] = useState("");
   const [shareLinks, setShareLinks] = useState([]);
   const [shareExpiryHours, setShareExpiryHours] = useState("72");
   const [createdShare, setCreatedShare] = useState(null);
@@ -304,6 +308,38 @@ function App() {
 
 
 
+  const loadInvitations = async () => {
+    if (!active) return;
+    try { setInvitations(await req("/projects/" + active + "/invitations")); }
+    catch (e) { setError(e.message); }
+  };
+
+  const createInvitation = async (event) => {
+    event.preventDefault(); setCreatedInvitation(null);
+    try {
+      const result = await req("/projects/" + active + "/invitations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: memberEmail, role: memberRole }) });
+      const url = window.location.origin + "/?invite=" + encodeURIComponent(result.token);
+      setCreatedInvitation({ url, email: result.email, expires_at: result.expires_at });
+      setMemberEmail(""); await loadInvitations();
+      setNotice("Invitation created. Send the private link to the intended person; it expires in 7 days and can be used once.");
+    } catch (e) { setError(e.message); }
+  };
+
+  const revokeInvitation = async (id) => {
+    try { await req("/projects/" + active + "/invitations/" + id, { method: "DELETE" }); await loadInvitations(); setNotice("Invitation revoked."); }
+    catch (e) { setError(e.message); }
+  };
+
+  const acceptInvitation = async (event) => {
+    event.preventDefault(); setLoginError("");
+    try {
+      const response = await fetch(API + "/invitations/accept", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: inviteToken, password: invitePassword }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || "Invitation acceptance failed");
+      sessionStorage.setItem("continuityai_access_token", data.access_token); setAuthToken(data.access_token);
+      window.history.replaceState({}, "", window.location.pathname); await refresh(null);
+    } catch (e) { setLoginError(e.message); }
+  };
   const loadMembers = async () => {
     if (!active) return;
     try { setMembers(await req("/projects/" + active + "/members")); }
@@ -631,7 +667,7 @@ function App() {
               </section>
 
               <nav className="tab-bar" aria-label="Project sections">
-                {tabs.map(({ id, label, icon: Icon }) => <button key={id} className={tab === id ? "tab-active" : ""} onClick={() => { setTab(id); if (id === "intelligence") loadIntelligence(); if (id === "audit") loadAuditLog(); if (id === "members") loadMembers(); }}><Icon size={16}/>{label}{id === "knowledge" && needsReview > 0 && <span className="tab-count">{needsReview}</span>}</button>)}
+                {tabs.map(({ id, label, icon: Icon }) => <button key={id} className={tab === id ? "tab-active" : ""} onClick={() => { setTab(id); if (id === "intelligence") loadIntelligence(); if (id === "audit") loadAuditLog(); if (id === "members") { loadMembers(); loadInvitations(); } }}><Icon size={16}/>{label}{id === "knowledge" && needsReview > 0 && <span className="tab-count">{needsReview}</span>}</button>)}
               </nav>
 
               {tab === "overview" && (
