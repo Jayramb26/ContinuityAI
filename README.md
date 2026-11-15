@@ -162,7 +162,7 @@ Do not claim the public demo is live until these checks pass.
 - Rule-based extraction searches for explicit decision/action/risk/question cues and can miss implicit context. Owner and due-date extraction is conservative and only attempts to capture explicitly written names and ISO dates; review every candidate.
 - LLM extraction is optional. If enabled, data is sent to the configured provider; review its data-handling terms before use.
 - Evidence substring validation does not perform semantic entailment. The Intelligence tab flags only explicit rule-based dependency cues and narrow possible contradictions; it can miss implicit relationships and can produce false positives.
-- The readiness percentage is an illustrative checklist indicator, not a validated project-health score.
+- The readiness percentage is an illustrative checklist indicator, not a validated project-health score. Handover receipt responses are member-scoped; each member can update their own accepted/needs-follow-up response, and the activity log records the actor and note. Anonymous bearer-share viewers cannot submit acknowledgements.
 - The audit log records project actions with actor email where available. Invitation and handover-share actions are also logged. Bearer share links are read-only, scoped to one workspace, expiring and revocable. Malware scanning and real-time collaboration are not implemented.
 - Provider-specific OAuth, direct GitHub/Slack/Teams/email integrations, and automated webhook signature verification are not implemented. The authenticated normalized-event intake is a connector adapter endpoint; it requires a server-side shared secret.
 
@@ -176,6 +176,8 @@ Do not claim the public demo is live until these checks pass.
 - `POST /api/projects/{id}/invitations`, `GET /api/projects/{id}/invitations`, `DELETE /api/projects/{id}/invitations/{invitation_id}`
 - Workspace membership management: `GET/POST/DELETE /api/projects/{id}/members` (see API docs for request schemas)
 - Handover share management and public read-only share routes (see API docs)
+- `GET /api/projects/{id}/acknowledgements` (member-scoped response list)
+- `POST /api/projects/{id}/acknowledgements` with `{ "status": "accepted" | "needs_follow_up", "note": "..." }`
 - `GET /api/projects`
 - `POST /api/projects`
 - `GET /api/projects/{id}`
