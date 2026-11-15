@@ -641,6 +641,25 @@ def test_workspace_invitation_revocation_and_expiry(client):
 
 
 
+def test_designated_handover_successor_and_overdue_deadline(client):
+    project_id = create_project(client)
+    invalid = client.patch(f"/api/projects/{project_id}/handover-assignment", json={"email": "not-a-member@example.com", "acceptance_due_date": "2020-01-01"})
+    assert invalid.status_code == 400
+    invalid_date = client.patch(f"/api/projects/{project_id}/handover-assignment", json={"email": "demo@continuityai.app", "acceptance_due_date": "not-a-date"})
+    assert invalid_date.status_code == 400
+    saved = client.patch(f"/api/projects/{project_id}/handover-assignment", json={"email": "demo@continuityai.app", "acceptance_due_date": "2020-01-01"})
+    assert saved.status_code == 200, saved.text
+    report = client.get(f"/api/projects/{project_id}/handover").json()
+    assert report["handover_assignment"]["email"] == "demo@continuityai.app"
+    assert report["handover_assignment"]["status"] == "overdue"
+    assert report["handover_assignment"]["is_overdue"] is True
+    accepted = client.post(f"/api/projects/{project_id}/acknowledgements", json={"status": "accepted", "note": ""})
+    assert accepted.status_code == 200
+    report = client.get(f"/api/projects/{project_id}/handover").json()
+    assert report["handover_assignment"]["status"] == "accepted"
+    assert report["handover_assignment"]["is_overdue"] is False
+
+
 def test_handover_acknowledgement_is_member_scoped_and_audited(client, monkeypatch):
     project_id = create_project(client)
     uploaded = client.post(f"/api/projects/{project_id}/upload", files={
