@@ -127,14 +127,22 @@ def _passages(content):
     )
     return windows
 def _definition_focus(value, subject="continuityai"):
-    """Return a sentence that directly defines the product, when one exists."""
-    sentences = [re.sub(r"\s+", " ", part).strip() for part in re.split(r"(?<=[.!?])\s+", value or "") if part.strip()]
-    for sentence in sentences:
-        if (re.search(rf"\b{re.escape(subject)}\b", sentence, re.I)
-                and re.search(r"\b(?:is|are)\s+(?:an?\s+|the\s+)?", sentence, re.I)
-                and re.search(r"\b(?:system|platform|software|tool|application|service)\b", sentence, re.I)):
-            return sentence[:700]
-    return ""
+    """Extract only the product's defining clause, excluding cover-page metadata."""
+    text = re.sub(r"\s+", " ", value or "").strip()
+    # PDF cover pages often concatenate author/institution metadata directly before
+    # the first product sentence without a newline or punctuation.
+    match = re.search(
+        rf"\b{re.escape(subject)}\b\s+(?:is|are)\s+(?:an?\s+|the\s+)?"
+        rf"[^.!?]*(?:[.!?]|$)",
+        text,
+        re.I,
+    )
+    if not match:
+        return ""
+    sentence = match.group(0).strip()
+    if not re.search(r"\b(?:system|platform|software|tool|application|service)\b", sentence, re.I):
+        return ""
+    return sentence[:700]
 
 def answer_project_question(question, documents, items):
     """Retrieve relevant, non-duplicated source excerpts; do not guess when evidence is weak."""
@@ -222,6 +230,12 @@ def answer_project_question(question, documents, items):
 
     matches.sort(key=lambda x: (x["score"], x["approved"], len(x["excerpt"])), reverse=True)
     top = matches[:3]
+    # For a direct product-definition question, once a clean definition is found,
+    # return that single source-backed sentence instead of mixing in architecture passages.
+    if definition_intent and top:
+        clean_definition = _definition_focus(top[0].get("excerpt", ""))
+        if clean_definition:
+            top = [dict(top[0], excerpt=clean_definition)]
     # A one-word match such as only "ContinuityAI" is not enough to support a useful answer.
     minimum_score = 5 if len(q_terms) == 1 else 3
     if not top or top[0]["score"] < minimum_score:
