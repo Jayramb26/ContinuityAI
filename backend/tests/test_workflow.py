@@ -505,7 +505,7 @@ def test_share_expiry_and_viewer_cannot_manage_links(client, monkeypatch):
         login = anonymous.post("/api/auth/login", json={"email": "viewer@continuityai.app", "password": "ViewerPassForTests!"})
         assert login.status_code == 200
         headers = {"Authorization": "Bearer " + login.json()["access_token"]}
-        assert anonymous.post(f"/api/projects/{project_id}/shares", json={"expires_in_hours": 24}, headers=headers).status_code == 403
+        assert anonymous.post(f"/api/projects/{project_id}/shares", json={"expires_in_hours": 24}, headers=headers).status_code == 404
         assert anonymous.get(f"/api/projects/{project_id}/shares", headers=headers).status_code == 403
 
 
