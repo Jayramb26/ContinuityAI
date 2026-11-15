@@ -251,3 +251,7 @@
 
 /* Handover receipt coverage: distinguish members still awaiting a response. */
 .ack-coverage-summary{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 14px}.ack-coverage-summary span{padding:8px 11px;border:1px solid #e5ecef;border-radius:8px;background:#fff;color:#718391;font-size:10px}.ack-coverage-summary b{color:#36586a;font-size:13px;margin-right:4px}.ack-status.pending{background:#edf1f4;color:#647786}.ack-response>div>small{font-size:9px;color:#8795a2;text-transform:capitalize}
+
+
+/* Version-aware handover receipt state */
+.ack-status.stale{background:#fff1d8;color:#8a5a12}.ack-stale{border:1px solid #e8bd73!important;background:#fffaf0}.ack-stale-note{color:#95631b!important;font-size:11px}
