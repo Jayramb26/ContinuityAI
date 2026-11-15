@@ -19,6 +19,7 @@ class SourceDocument(Base):
     filename: Mapped[str] = mapped_column(String(255))
     content: Mapped[str] = mapped_column(Text)
     uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    last_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     project = relationship("Project", back_populates="documents")
 
 class ActivityEvent(Base):
