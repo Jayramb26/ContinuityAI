@@ -286,7 +286,7 @@ def get_project_or_404(project_id, db):
     return project
 
 @app.post("/api/projects")
-def create_project(payload: ProjectCreate, db: Session = Depends(get_db)):
+def create_project(payload: ProjectCreate, request: Request, db: Session = Depends(get_db)):
     if not payload.name.strip():
         raise HTTPException(400, "Project name is required")
     p = Project(name=payload.name.strip(), description=payload.description.strip())
@@ -597,7 +597,7 @@ def handover(project_id: int, db: Session = Depends(get_db)):
 def require_share_owner(request: Request):
     if os.getenv("AUTH_SECRET"):
         claims = getattr(request.state, "auth", None) or {}
-        if claims.get("role") != "owner":
+        if getattr(request.state, "workspace_role", claims.get("role")) != "owner":
             raise HTTPException(403, "Only workspace owners can create or revoke handover links.")
 
 
