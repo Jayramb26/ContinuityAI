@@ -643,6 +643,10 @@ def test_workspace_invitation_revocation_and_expiry(client):
 
 def test_handover_acknowledgement_is_member_scoped_and_audited(client, monkeypatch):
     project_id = create_project(client)
+    uploaded = client.post(f"/api/projects/{project_id}/upload", files={
+        "file": ("handover-notes.txt", b"Decision: Use FastAPI for the backend. Task: Jayram owns deployment testing.", "text/plain")
+    })
+    assert uploaded.status_code == 200, uploaded.text
     other_project_id = create_project(client)
     monkeypatch.setenv("DEMO_VIEWER_EMAIL", "successor@continuityai.app")
     monkeypatch.setenv("DEMO_VIEWER_PASSWORD", "SuccessorPass2026!")
@@ -685,6 +689,17 @@ def test_handover_acknowledgement_is_member_scoped_and_audited(client, monkeypat
     assert rows[0]["note"] == ""
     owner_view = client.get(f"/api/projects/{project_id}/acknowledgements").json()
     assert len(owner_view["members"]) == 2
+    assert owner_view["items"][0]["is_stale"] is False
+
+    # A tracked project update after receipt invalidates the previous acknowledgement.
+    project = client.get(f"/api/projects/{project_id}").json()
+    item = project["items"][0]
+    changed = client.patch(f"/api/items/{item['id']}", json={**item, "detail": item["detail"] + " Updated after receipt."})
+    assert changed.status_code == 200, changed.text
+    stale_view = client.get(f"/api/projects/{project_id}/acknowledgements").json()
+    successor_receipt = next(row for row in stale_view["items"] if row["email"] == "successor@continuityai.app")
+    assert successor_receipt["is_stale"] is True
+    assert successor_receipt["status"] == "accepted"
     assert client.get(f"/api/projects/{other_project_id}/acknowledgements").json()["items"] == []
     activity = client.get(f"/api/projects/{project_id}").json()["activity"]
     assert any("requested handover clarification" in event["message"] for event in activity)

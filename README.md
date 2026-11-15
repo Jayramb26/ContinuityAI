@@ -233,3 +233,8 @@ frontend/
 render.yaml
 README.md
 ```
+
+
+### Version-aware handover receipts
+
+A successor acknowledgement is compared with the latest non-acknowledgement project activity. If tracked source material, decisions, tasks, or other workspace work changes after the response, the receipt is marked **Review required** until the member reviews and acknowledges again. Changes made outside ContinuityAI's tracked workflows are not detected.
