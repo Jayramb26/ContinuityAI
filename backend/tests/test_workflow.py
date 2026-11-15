@@ -638,3 +638,57 @@ def test_workspace_invitation_revocation_and_expiry(client):
     expired = client.post("/api/invitations/accept",
         json={"token": second["token"], "password": "StrongPassword2026!"})
     assert expired.status_code == 410
+
+
+
+def test_handover_acknowledgement_is_member_scoped_and_audited(client, monkeypatch):
+    project_id = create_project(client)
+    other_project_id = create_project(client)
+    monkeypatch.setenv("DEMO_VIEWER_EMAIL", "successor@continuityai.app")
+    monkeypatch.setenv("DEMO_VIEWER_PASSWORD", "SuccessorPass2026!")
+
+    added = client.post(f"/api/projects/{project_id}/members",
+        json={"email": "successor@continuityai.app", "role": "viewer"})
+    assert added.status_code == 200, added.text
+
+    login = client.post("/api/auth/login", json={
+        "email": "successor@continuityai.app", "password": "SuccessorPass2026!"
+    })
+    assert login.status_code == 200
+    successor = TestClient(app)
+    successor.headers.update({"Authorization": "Bearer " + login.json()["access_token"]})
+
+    initial = successor.get(f"/api/projects/{project_id}/acknowledgements")
+    assert initial.status_code == 200
+    assert initial.json()["items"] == []
+    assert initial.json()["current_user_email"] == "successor@continuityai.app"
+
+    missing_note = successor.post(f"/api/projects/{project_id}/acknowledgements",
+        json={"status": "needs_follow_up", "note": " "})
+    assert missing_note.status_code == 400
+
+    follow_up = successor.post(f"/api/projects/{project_id}/acknowledgements",
+        json={"status": "needs_follow_up", "note": "Please clarify the deployment owner."})
+    assert follow_up.status_code == 200, follow_up.text
+    assert follow_up.json()["status"] == "needs_follow_up"
+    assert follow_up.json()["email"] == "successor@continuityai.app"
+
+    accepted = successor.post(f"/api/projects/{project_id}/acknowledgements",
+        json={"status": "accepted", "note": ""})
+    assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["status"] == "accepted"
+
+    rows = client.get(f"/api/projects/{project_id}/acknowledgements").json()["items"]
+    assert len(rows) == 1
+    assert rows[0]["status"] == "accepted"
+    assert rows[0]["note"] == ""
+    assert client.get(f"/api/projects/{other_project_id}/acknowledgements").json()["items"] == []
+    activity = client.get(f"/api/projects/{project_id}").json()["activity"]
+    assert any("requested handover clarification" in event["message"] for event in activity)
+    assert any("accepted the handover" in event["message"] for event in activity)
+
+    invalid = successor.post(f"/api/projects/{project_id}/acknowledgements",
+        json={"status": "unknown", "note": ""})
+    assert invalid.status_code == 400
+    assert successor.post(f"/api/projects/{other_project_id}/acknowledgements",
+        json={"status": "accepted", "note": ""}).status_code == 404

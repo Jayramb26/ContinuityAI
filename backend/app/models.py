@@ -140,3 +140,15 @@ class WorkspaceInvitation(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime)
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class HandoverAcknowledgement(Base):
+    __tablename__ = "handover_acknowledgements"
+    __table_args__ = (UniqueConstraint("project_id", "email", name="uq_handover_ack_project_email"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"))
+    email: Mapped[str] = mapped_column(String(180), index=True)
+    status: Mapped[str] = mapped_column(String(30), default="accepted")
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

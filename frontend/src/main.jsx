@@ -46,6 +46,10 @@ function App() {
   const [milestoneItemIds, setMilestoneItemIds] = useState([]);
   const [milestoneBusy, setMilestoneBusy] = useState(false);
   const [auditLog, setAuditLog] = useState([]);
+  const [handoverAcks, setHandoverAcks] = useState([]);
+  const [currentAckEmail, setCurrentAckEmail] = useState("");
+  const [ackNote, setAckNote] = useState("");
+  const [ackBusy, setAckBusy] = useState(false);
   const [members, setMembers] = useState([]);
   const [memberEmail, setMemberEmail] = useState("");
   const [memberRole, setMemberRole] = useState("viewer");
@@ -426,6 +430,32 @@ function App() {
     catch { setError("Clipboard access is unavailable. Select and copy the link manually."); }
   };
 
+  const loadHandoverAcknowledgements = async () => {
+    if (!active) return;
+    try {
+      const result = await req("/projects/" + active + "/acknowledgements");
+      setHandoverAcks(result.items || []);
+      setCurrentAckEmail(result.current_user_email || "");
+    } catch (e) { setError(e.message); }
+  };
+
+  const submitHandoverAcknowledgement = async (status) => {
+    if (!active) return;
+    setAckBusy(true); setError("");
+    try {
+      await req("/projects/" + active + "/acknowledgements", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status, note: ackNote.trim() })
+      });
+      setAckNote("");
+      await loadHandoverAcknowledgements();
+      await select(active);
+      setTab("handover");
+      setNotice(status === "accepted" ? "Handover receipt acknowledged and recorded." : "Clarification request sent to the workspace team.");
+    } catch (e) { setError(e.message); }
+    finally { setAckBusy(false); }
+  };
+
   const loadAuditLog = async () => {
     if (!active) return;
     try { setAuditLog(await req("/projects/" + active + "/audit")); }
@@ -702,7 +732,7 @@ function App() {
               </section>
 
               <nav className="tab-bar" aria-label="Project sections">
-                {tabs.map(({ id, label, icon: Icon }) => <button key={id} className={tab === id ? "tab-active" : ""} onClick={() => { setTab(id); if (id === "intelligence") loadIntelligence(); if (id === "audit") loadAuditLog(); if (id === "members") { loadMembers(); loadInvitations(); } }}><Icon size={16}/>{label}{id === "knowledge" && needsReview > 0 && <span className="tab-count">{needsReview}</span>}</button>)}
+                {tabs.map(({ id, label, icon: Icon }) => <button key={id} className={tab === id ? "tab-active" : ""} onClick={() => { setTab(id); if (id === "intelligence") loadIntelligence(); if (id === "audit") loadAuditLog(); if (id === "handover") loadHandoverAcknowledgements(); if (id === "members") { loadMembers(); loadInvitations(); } }}><Icon size={16}/>{label}{id === "knowledge" && needsReview > 0 && <span className="tab-count">{needsReview}</span>}</button>)}
               </nav>
 
               {tab === "overview" && (
@@ -820,6 +850,14 @@ function App() {
                 <div className="handover-layout">
                   <section className="surface-card handover-main">
                     <div className="section-heading"><div><span className="eyebrow">HANDOVER REPORT</span><h2>Project readiness</h2><p className="section-subtitle">A snapshot of the knowledge that is ready to transfer.</p></div><a className="primary-button" href={API + "/projects/" + active + "/handover.md"}><Download size={15}/> Download .md</a></div>
+                    <section className="handover-acceptance-panel">
+                      <div className="section-heading"><div><span className="eyebrow">HANDOVER RECEIPT</span><h3>Successor acknowledgement</h3><p className="section-subtitle">A workspace member can confirm receipt or request missing context. Responses are attributed to the signed-in account and recorded in project activity.</p></div><span className="review-status status-approved">{handoverAcks.length} response(s)</span></div>
+                      {(() => { const mine = handoverAcks.find(row => row.email === currentAckEmail); return mine ? <div className="ack-current-status"><b>{mine.status === "accepted" ? "You acknowledged this handover" : "You requested clarification"}</b><small>{new Date(mine.updated_at).toLocaleString()} · {mine.email}</small>{mine.note && <p>{mine.note}</p>}</div> : <p className="section-subtitle">You have not responded to this handover yet.</p>; })()}
+                      <label className="ack-note-label">Clarification note (required only when requesting follow-up)<textarea rows={3} maxLength={2000} value={ackNote} onChange={e => setAckNote(e.target.value)} placeholder="What is missing, unclear or needs confirmation?"/></label>
+                      <div className="ack-actions"><button className="primary-button" type="button" disabled={ackBusy} onClick={() => submitHandoverAcknowledgement("accepted")}><CheckCircle2 size={15}/> Accept handover</button><button className="secondary-button" type="button" disabled={ackBusy || !ackNote.trim()} onClick={() => submitHandoverAcknowledgement("needs_follow_up")}>Request clarification</button></div>
+                      <h4>Team responses</h4>
+                      {handoverAcks.length ? handoverAcks.map(row => <div className="ack-response" key={row.id}><div><b>{row.email}</b><span className={"ack-status " + (row.status === "accepted" ? "accepted" : "follow-up")}>{row.status === "accepted" ? "Accepted" : "Needs follow-up"}</span></div>{row.note && <p>{row.note}</p>}<small>Updated {new Date(row.updated_at).toLocaleString()}</small></div>) : <p className="inline-empty">No successor responses recorded yet.</p>}
+                    </section>
                     <div className="handover-score"><div><strong>{handover?.readiness ?? 0}%</strong><span>readiness score</span></div><div className="score-track"><span style={{ width: (handover?.readiness || 0) + "%" }}/></div></div>
                      <h3 className="subsection-title">How readiness is calculated</h3><p className="section-subtitle">A transparent checklist score, not an AI judgement. Each factor shows its contribution.</p><div className="readiness-breakdown">{Object.entries(handover?.readiness_breakdown || {}).map(([key,part]) => <div className="readiness-factor" key={key}><div><b>{part.label}</b><strong>{part.score}/{part.max}</strong></div><div className="readiness-factor-track"><span style={{width:(part.score/part.max*100)+"%"}}/></div><small>{part.detail}</small></div>)}</div>
                     <div className="handover-stats"><div><b>{handover?.source_count ?? documents.length}</b><span>Sources</span></div><div><b>{handover?.approved_count ?? approved}</b><span>Approved</span></div><div><b>{handover?.review_count ?? needsReview}</b><span>Need review</span></div></div>
