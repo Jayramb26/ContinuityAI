@@ -392,5 +392,8 @@ def test_milestone_tracking_links_tasks_and_calculates_progress(client):
     assert updated.json()["status"] == "completed"
     assert len(client.get(f"/api/projects/{project_id}/milestones").json()) == 1
     assert client.get(f"/api/projects/{other_project_id}/milestones").json() == []
+    handover = client.get(f"/api/projects/{project_id}/handover").json()
+    assert handover["milestones"][0]["progress"] == 50
+    assert "## Project milestones" in client.get(f"/api/projects/{project_id}/handover.md").text
     assert any("Milestone created" in e["message"] for e in client.get(f"/api/projects/{project_id}").json()["activity"])
     assert client.delete(f"/api/milestones/{milestone['id']}").status_code == 200
