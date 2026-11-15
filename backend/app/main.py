@@ -96,7 +96,9 @@ async def demo_access_control(request: Request, call_next):
                     return JSONResponse(status_code=403, content={"detail": "Only workspace owners can manage members."})
                 if member.role == "viewer" and request.method not in {"GET", "HEAD", "OPTIONS"} and not (request.method == "POST" and path.endswith("/ask")):
                     return JSONResponse(status_code=403, content={"detail": "Viewer access is read-only in this workspace."})
-            elif path.startswith("/api/brand/") and request.method not in {"GET", "HEAD", "OPTIONS"} and claims.get("role") != "owner":
+            elif path == "/api/projects" and request.method == "POST" and claims.get("role") == "viewer":
+                return JSONResponse(status_code=403, content={"detail": "Viewer accounts cannot create workspaces."})
+            if path.startswith("/api/brand/") and request.method not in {"GET", "HEAD", "OPTIONS"} and claims.get("role") != "owner":
                 return JSONResponse(status_code=403, content={"detail": "Only demo owners can manage brand governance."})
     return await call_next(request)
 
