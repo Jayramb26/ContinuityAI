@@ -4,7 +4,7 @@ import {
   BrainCircuit, Plus, Upload, CheckCircle2, AlertTriangle, FileText,
   Download, RefreshCw, Search, LayoutDashboard, Layers3, ClipboardCheck,
   Clock3, ShieldCheck, ArrowUpRight, Sparkles, CircleHelp, ListTodo,
-  Menu, X, ExternalLink, ShieldAlert, FileCheck, Trash2, Network, MessageCircle
+  Menu, X, ExternalLink, ShieldAlert, FileCheck, Trash2, Network, MessageCircle, Users
 } from "lucide-react";
 import "./style.css";
 
@@ -46,6 +46,9 @@ function App() {
   const [milestoneItemIds, setMilestoneItemIds] = useState([]);
   const [milestoneBusy, setMilestoneBusy] = useState(false);
   const [auditLog, setAuditLog] = useState([]);
+  const [members, setMembers] = useState([]);
+  const [memberEmail, setMemberEmail] = useState("");
+  const [memberRole, setMemberRole] = useState("viewer");
   const [shareLinks, setShareLinks] = useState([]);
   const [shareExpiryHours, setShareExpiryHours] = useState("72");
   const [createdShare, setCreatedShare] = useState(null);
@@ -301,6 +304,41 @@ function App() {
 
 
 
+  const loadMembers = async () => {
+    if (!active) return;
+    try { setMembers(await req("/projects/" + active + "/members")); }
+    catch (e) { setError(e.message); }
+  };
+
+  const addMember = async (event) => {
+    event.preventDefault();
+    try {
+      await req("/projects/" + active + "/members", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: memberEmail, role: memberRole }) });
+      setMemberEmail("");
+      await loadMembers();
+      await select(active);
+      setTab("members");
+      setNotice("Workspace membership updated. No email invitation was sent; the assigned person must already have a configured login.");
+    } catch (e) { setError(e.message); }
+  };
+
+  const updateMemberRole = async (member, role) => {
+    try {
+      await req("/projects/" + active + "/members/" + member.id, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role }) });
+      await loadMembers();
+      setNotice("Workspace role updated.");
+    } catch (e) { setError(e.message); }
+  };
+
+  const removeMember = async (member) => {
+    if (!window.confirm("Remove " + member.email + " from this workspace?")) return;
+    try {
+      await req("/projects/" + active + "/members/" + member.id, { method: "DELETE" });
+      await loadMembers();
+      setNotice("Workspace member removed.");
+    } catch (e) { setError(e.message); }
+  };
+
   const loadShareLinks = async () => {
     if (!active) return;
     try { setShareLinks(await req("/projects/" + active + "/shares")); }
@@ -417,6 +455,7 @@ function App() {
     { id: "milestones", label: "Milestones", icon: Layers3 },
     { id: "sources", label: "Sources", icon: FileText },
     { id: "handover", label: "Handover", icon: ShieldCheck },
+    { id: "members", label: "Team access", icon: Users },
     { id: "intelligence", label: "Intelligence", icon: Network },
     { id: "assistant", label: "Ask assistant", icon: MessageCircle },
     { id: "audit", label: "Audit log", icon: ClipboardCheck }
@@ -592,7 +631,7 @@ function App() {
               </section>
 
               <nav className="tab-bar" aria-label="Project sections">
-                {tabs.map(({ id, label, icon: Icon }) => <button key={id} className={tab === id ? "tab-active" : ""} onClick={() => { setTab(id); if (id === "intelligence") loadIntelligence(); if (id === "audit") loadAuditLog(); }}><Icon size={16}/>{label}{id === "knowledge" && needsReview > 0 && <span className="tab-count">{needsReview}</span>}</button>)}
+                {tabs.map(({ id, label, icon: Icon }) => <button key={id} className={tab === id ? "tab-active" : ""} onClick={() => { setTab(id); if (id === "intelligence") loadIntelligence(); if (id === "audit") loadAuditLog(); if (id === "members") loadMembers(); }}><Icon size={16}/>{label}{id === "knowledge" && needsReview > 0 && <span className="tab-count">{needsReview}</span>}</button>)}
               </nav>
 
               {tab === "overview" && (
@@ -686,6 +725,20 @@ function App() {
                 <section className="surface-card">
                   <div className="section-heading"><div><span className="eyebrow">CONNECTED CONTEXT</span><h2>Source library</h2><p className="section-subtitle">Documents provide traceable evidence for extracted project knowledge.</p></div><label className="secondary-button"><Upload size={15}/> Upload source<input type="file" accept=".pdf,.docx,.txt,.md" hidden onChange={upload}/></label></div>
                   {documents.length ? <div className="source-grid">{documents.map(doc => <article className="source-card" key={doc.id}><div className="doc-icon"><FileText size={20}/></div><div><b>{doc.filename}</b><p>Document #{doc.id}</p><small>{doc.uploaded_at ? new Date(doc.uploaded_at).toLocaleString() : "Date unavailable"}</small></div><span className="source-connected"><CheckCircle2 size={13}/> Connected</span></article>)}</div> : <div className="inline-empty"><FileText size={20}/><span>No sources added yet. Upload a PDF, DOCX, TXT or Markdown file.</span></div>}
+                </section>
+              )}
+
+              {tab === "members" && (
+                <section className="surface-card knowledge-card">
+                  <div className="section-heading"><div><span className="eyebrow">WORKSPACE PERMISSIONS</span><h2>Team access</h2><p className="section-subtitle">Membership and permissions apply to this workspace only. Assign only people with an already configured ContinuityAI demo login.</p></div><Users size={22}/></div>
+                  <form className="brand-rule-form" onSubmit={addMember}>
+                    <label>Account email<input type="email" value={memberEmail} onChange={e => setMemberEmail(e.target.value)} placeholder="editor@continuityai.app" required/></label>
+                    <label>Workspace role<select value={memberRole} onChange={e => setMemberRole(e.target.value)}><option value="editor">Editor — can update project knowledge</option><option value="viewer">Viewer — read-only access</option></select></label>
+                    <button className="primary-button" type="submit"><Users size={15}/> Add or update member</button>
+                  </form>
+                  <div className="section-heading"><h3>Current members</h3><button type="button" className="small-button" onClick={loadMembers}>Refresh</button></div>
+                  {members.length ? members.map(member => <div className="gap-row" key={member.id}><Users size={16}/><div><b>{member.email}</b><small>{member.role} · Added by {member.added_by || "workspace setup"} · {new Date(member.created_at).toLocaleDateString()}</small></div>{member.role !== "owner" && <><select aria-label={"Role for " + member.email} value={member.role} onChange={e => updateMemberRole(member,e.target.value)}><option value="editor">Editor</option><option value="viewer">Viewer</option></select><button type="button" className="small-button" onClick={() => removeMember(member)}>Remove</button></>}</div>) : <div className="inline-empty">No team members loaded yet. Refresh to view this workspace roster.</div>}
+                  <p className="brand-disclaimer">Demo limitation: this adds an existing configured login to this workspace; it does not send an email invitation or create an account. Owners manage the roster, editors can update project data, and viewers are read-only. This is not yet a production identity provider.</p>
                 </section>
               )}
 
