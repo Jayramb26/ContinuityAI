@@ -51,6 +51,12 @@ with engine.begin() as conn:
             )
         """), {"email": legacy_owner})
 
+    existing_projects = {c["name"] for c in inspect(engine).get_columns("projects")}
+    if "assigned_successor_email" not in existing_projects:
+        conn.execute(text("ALTER TABLE projects ADD COLUMN assigned_successor_email VARCHAR(180) NOT NULL DEFAULT ''"))
+    if "acceptance_due_date" not in existing_projects:
+        conn.execute(text("ALTER TABLE projects ADD COLUMN acceptance_due_date VARCHAR(20) NOT NULL DEFAULT ''"))
+
     existing_events = {c["name"] for c in inspect(engine).get_columns("activity_events")}
     if "actor" not in existing_events:
         conn.execute(text("ALTER TABLE activity_events ADD COLUMN actor VARCHAR(180) NOT NULL DEFAULT 'demo-owner'"))
@@ -95,6 +101,8 @@ async def demo_access_control(request: Request, call_next):
                 if not member:
                     return JSONResponse(status_code=404, content={"detail": "You do not have access to this workspace."})
                 request.state.workspace_role = member.role
+                if path.endswith("/handover-assignment") and member.role != "owner":
+                    return JSONResponse(status_code=403, content={"detail": "Only workspace owners can assign the handover successor."})
                 if (path.endswith("/members") or "/members/" in path or "/invitations" in path) and member.role != "owner":
                     return JSONResponse(status_code=403, content={"detail": "Only workspace owners can manage members."})
                 if member.role == "viewer" and request.method not in {"GET", "HEAD", "OPTIONS"} and not (request.method == "POST" and (path.endswith("/ask") or path.endswith("/acknowledgements"))):
@@ -384,7 +392,7 @@ def health():
     return {"status": "ok", "app": "ContinuityAI", "version": "0.3.0"}
 
 def project_dict(p):
-    return {"id": p.id, "name": p.name, "description": p.description, "created_at": p.created_at.isoformat()}
+    return {"id": p.id, "name": p.name, "description": p.description, "assigned_successor_email": p.assigned_successor_email or "", "acceptance_due_date": p.acceptance_due_date or "", "created_at": p.created_at.isoformat()}
 
 def item_dict(i):
     return {"id": i.id, "category": i.category, "title": i.title, "detail": i.detail, "source_id": i.source_id,
@@ -413,6 +421,29 @@ def create_project(payload: ProjectCreate, request: Request, db: Session = Depen
     log_event(db, p.id, f'Workspace "{p.name}" created', "workspace_created", actor=owner_email)
     db.commit(); db.refresh(p)
     return project_dict(p)
+
+@app.patch("/api/projects/{project_id}/handover-assignment")
+def update_handover_assignment(project_id: int, payload: dict, request: Request, db: Session = Depends(get_db)):
+    require_share_owner(request)
+    project = get_project_or_404(project_id, db)
+    email = str(payload.get("email", "")).strip().lower()
+    due_date = str(payload.get("acceptance_due_date", "")).strip()
+    if email and not re.fullmatch(r"[^@\\s]+@[^@\\s]+\\.[^@\\s]+", email):
+        raise HTTPException(400, "Enter a valid successor email address.")
+    if email and not db.scalar(select(ProjectMember).where(ProjectMember.project_id == project_id, ProjectMember.email == email)):
+        raise HTTPException(400, "The designated successor must already be a member of this workspace.")
+    if due_date:
+        try: datetime.strptime(due_date, "%Y-%m-%d")
+        except ValueError: raise HTTPException(400, "Acceptance deadline must use YYYY-MM-DD.")
+    project.assigned_successor_email = email
+    project.acceptance_due_date = due_date
+    claims = getattr(request.state, "auth", None) or {}
+    message = f"Handover successor assigned to {email}" if email else "Designated handover successor cleared"
+    if due_date: message += f" · acceptance due {due_date}"
+    log_event(db, project_id, message, "handover_assignment_updated", actor=claims.get("sub", "demo-owner"))
+    db.commit(); db.refresh(project)
+    return {"project": project_dict(project), "message": "Handover assignment saved."}
+
 
 @app.get("/api/projects")
 def list_projects(request: Request, db: Session = Depends(get_db)):
@@ -839,7 +870,26 @@ def handover(project_id: int, db: Session = Depends(get_db)):
     dependency_rows = db.scalars(select(TaskDependency).where(TaskDependency.project_id == project_id).order_by(TaskDependency.id.asc())).all()
     task_dependencies = [value for value in (task_dependency_dict(row, db) for row in dependency_rows) if value]
     waiting_tasks = {value["item_id"] for value in task_dependencies if not value["satisfied"]}
-    milestone_rows = db.scalars(select(ProjectMilestone).where(ProjectMilestone.project_id == project_id).order_by(ProjectMilestone.due_date.asc())).all()
+    assigned_email = (p.assigned_successor_email or "").strip().lower()
+    successor_ack = db.scalar(select(HandoverAcknowledgement).where(HandoverAcknowledgement.project_id == project_id, HandoverAcknowledgement.email == assigned_email)) if assigned_email else None
+    latest_project_change = db.scalar(select(ActivityEvent).where(ActivityEvent.project_id == project_id, ~ActivityEvent.event_type.like("handover_%")).order_by(ActivityEvent.created_at.desc()).limit(1))
+    ack_is_stale = bool(successor_ack and latest_project_change and
+        (latest_project_change.created_at.replace(tzinfo=timezone.utc) if latest_project_change.created_at.tzinfo is None else latest_project_change.created_at) >
+        (successor_ack.updated_at.replace(tzinfo=timezone.utc) if successor_ack.updated_at.tzinfo is None else successor_ack.updated_at))
+    deadline = (p.acceptance_due_date or "").strip()
+    deadline_passed = bool(deadline and deadline < datetime.now(timezone.utc).date().isoformat())
+    if not assigned_email: assignment_status = "unassigned"
+    elif successor_ack and successor_ack.status == "accepted" and not ack_is_stale: assignment_status = "accepted"
+    elif ack_is_stale: assignment_status = "review_required"
+    elif deadline_passed: assignment_status = "overdue"
+    else: assignment_status = "awaiting_acceptance"
+    handover_assignment = {
+        "email": assigned_email, "acceptance_due_date": deadline, "status": assignment_status,
+        "is_overdue": deadline_passed and assignment_status != "accepted",
+        "acknowledged_at": successor_ack.updated_at.isoformat() if successor_ack else None,
+        "acknowledgement_status": successor_ack.status if successor_ack else None
+    }
+        milestone_rows = db.scalars(select(ProjectMilestone).where(ProjectMilestone.project_id == project_id).order_by(ProjectMilestone.due_date.asc())).all()
     milestones = [milestone_dict(row, db) for row in milestone_rows]
     today = datetime.now(timezone.utc).date().isoformat()
     overdue_milestones = [m for m in milestones if m["due_date"] and m["due_date"] < today and m["status"] != "completed"]
@@ -871,7 +921,7 @@ def handover(project_id: int, db: Session = Depends(get_db)):
     if overdue_milestones: next_steps.append(f"Review {len(overdue_milestones)} overdue milestone(s)")
     if waiting_tasks: next_steps.append(f"Resolve {len(waiting_tasks)} task(s) waiting on prerequisites")
     if not next_steps: next_steps.append("Review the latest activity and confirm the handover is current")
-    return {"project": project_dict(p), "generated_at": datetime.now(timezone.utc).isoformat(),
+    return {"project": project_dict(p), "handover_assignment": handover_assignment, "generated_at": datetime.now(timezone.utc).isoformat(),
         "source_count": len(docs), "approved_count": len(approved), "review_count": len(gaps),
         "readiness": max(0, min(100, readiness)), "readiness_breakdown": readiness_breakdown,
         "categories": categories, "gaps": [item_dict(i) for i in gaps],
