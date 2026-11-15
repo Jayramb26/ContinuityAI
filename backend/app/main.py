@@ -11,7 +11,7 @@ from sqlalchemy import select, text, inspect
 from sqlalchemy.orm import Session
 from .database import SessionLocal
 from .database import Base, engine, get_db
-from .models import Project, SourceDocument, KnowledgeItem, ActivityEvent, BrandGuideline, BrandReview, ProjectMilestone, HandoverShare, ProjectMember, UserAccount, WorkspaceInvitation, TaskDependency
+from .models import Project, SourceDocument, KnowledgeItem, ActivityEvent, BrandGuideline, BrandReview, ProjectMilestone, HandoverShare, ProjectMember, UserAccount, WorkspaceInvitation, TaskDependency, HandoverAcknowledgement
 from .schemas import ProjectCreate, ReviewUpdate, KnowledgeCreate, ActivityCreate, BrandGuidelineCreate, BrandDecision, MilestoneCreate, MilestoneUpdate
 from .ingestion import extract_text, chunks
 from .knowledge import heuristic_extract, ai_extract
@@ -21,6 +21,7 @@ from .auth import issue_token, verify_token, hash_password, verify_password
 Base.metadata.create_all(bind=engine)
 UserAccount.__table__.create(bind=engine, checkfirst=True)
 WorkspaceInvitation.__table__.create(bind=engine, checkfirst=True)
+HandoverAcknowledgement.__table__.create(bind=engine, checkfirst=True)
 
 # Lightweight additive migration so existing Render SQLite databases keep their data.
 with engine.begin() as conn:
@@ -96,7 +97,7 @@ async def demo_access_control(request: Request, call_next):
                 request.state.workspace_role = member.role
                 if (path.endswith("/members") or "/members/" in path or "/invitations" in path) and member.role != "owner":
                     return JSONResponse(status_code=403, content={"detail": "Only workspace owners can manage members."})
-                if member.role == "viewer" and request.method not in {"GET", "HEAD", "OPTIONS"} and not (request.method == "POST" and path.endswith("/ask")):
+                if member.role == "viewer" and request.method not in {"GET", "HEAD", "OPTIONS"} and not (request.method == "POST" and (path.endswith("/ask") or path.endswith("/acknowledgements"))):
                     return JSONResponse(status_code=403, content={"detail": "Viewer access is read-only in this workspace."})
             elif path == "/api/projects" and request.method == "POST" and claims.get("role") == "viewer":
                 return JSONResponse(status_code=403, content={"detail": "Viewer accounts cannot create workspaces."})
@@ -736,6 +737,60 @@ def review_item(item_id: int, payload: ReviewUpdate, db: Session = Depends(get_d
     log_event(db, item.project_id, f'Updated "{item.title}" · review: {item.status} · work: {item.work_status}', "item_updated", item.id)
     db.commit(); db.refresh(item)
     return item_dict(item)
+
+@app.get("/api/projects/{project_id}/acknowledgements")
+def list_handover_acknowledgements(project_id: int, request: Request, db: Session = Depends(get_db)):
+    get_project_or_404(project_id, db)
+    rows = db.scalars(select(HandoverAcknowledgement).where(
+        HandoverAcknowledgement.project_id == project_id
+    ).order_by(HandoverAcknowledgement.updated_at.desc())).all()
+    current_email = str((getattr(request.state, "auth", None) or {}).get("sub", "")).strip().lower()
+    return {
+        "current_user_email": current_email,
+        "items": [{
+            "id": row.id, "email": row.email, "status": row.status, "note": row.note,
+            "created_at": row.created_at.isoformat(), "updated_at": row.updated_at.isoformat()
+        } for row in rows]
+    }
+
+
+@app.post("/api/projects/{project_id}/acknowledgements")
+def submit_handover_acknowledgement(project_id: int, payload: dict, request: Request, db: Session = Depends(get_db)):
+    get_project_or_404(project_id, db)
+    claims = getattr(request.state, "auth", None) or {}
+    email = str(claims.get("sub", "")).strip().lower()
+    if not email:
+        raise HTTPException(401, "Sign in before responding to this handover.")
+    status = str(payload.get("status", "accepted")).strip().lower()
+    note = str(payload.get("note", "")).strip()
+    if status not in {"accepted", "needs_follow_up"}:
+        raise HTTPException(400, "Choose accepted or needs_follow_up.")
+    if len(note) > 2000:
+        raise HTTPException(400, "The handover note must be 2,000 characters or fewer.")
+    if status == "needs_follow_up" and not note:
+        raise HTTPException(400, "Add a short note describing what needs clarification.")
+    row = db.scalar(select(HandoverAcknowledgement).where(
+        HandoverAcknowledgement.project_id == project_id,
+        HandoverAcknowledgement.email == email
+    ))
+    now = datetime.now(timezone.utc)
+    if row:
+        row.status = status
+        row.note = note
+        row.updated_at = now
+        action = "updated"
+    else:
+        row = HandoverAcknowledgement(project_id=project_id, email=email, status=status, note=note)
+        db.add(row)
+        action = "submitted"
+    label = "accepted the handover" if status == "accepted" else "requested handover clarification"
+    log_event(db, project_id, f"{email} {label}" + (f": {note}" if note else ""), f"handover_{status}", actor=email)
+    db.commit()
+    db.refresh(row)
+    return {"id": row.id, "email": row.email, "status": row.status, "note": row.note,
+            "created_at": row.created_at.isoformat(), "updated_at": row.updated_at.isoformat(),
+            "message": f"Handover response {action}."}
+
 
 @app.get("/api/projects/{project_id}/handover")
 def handover(project_id: int, db: Session = Depends(get_db)):
