@@ -356,3 +356,41 @@ def test_optional_editor_and_viewer_roles_enforce_write_permissions(client, monk
         assert anonymous.get("/api/projects", headers=viewer_headers).status_code == 200
         assert anonymous.post("/api/projects", json={"name": "Blocked workspace"}, headers=viewer_headers).status_code == 403
         assert anonymous.post("/api/brand/guidelines", json={"name":"x","kind":"required_term","content":"x"}, headers=viewer_headers).status_code == 403
+
+
+def test_milestone_tracking_links_tasks_and_calculates_progress(client):
+    project_id = create_project(client)
+    other_project_id = create_project(client)
+    task_a = client.post(f"/api/projects/{project_id}/items", json={
+        "category":"task", "title":"Build API", "work_status":"done"
+    }).json()
+    task_b = client.post(f"/api/projects/{project_id}/items", json={
+        "category":"task", "title":"Test deployment", "work_status":"in_progress"
+    }).json()
+    foreign_task = client.post(f"/api/projects/{other_project_id}/items", json={
+        "category":"task", "title":"Foreign task"
+    }).json()
+
+    invalid = client.post(f"/api/projects/{project_id}/milestones", json={
+        "name":"Release", "item_ids":[task_a["id"], foreign_task["id"]]
+    })
+    assert invalid.status_code == 400
+
+    created = client.post(f"/api/projects/{project_id}/milestones", json={
+        "name":"Release 1", "description":"Ship the first release",
+        "owner":"Jayram", "due_date":"2026-11-20",
+        "status":"in_progress", "item_ids":[task_a["id"],task_b["id"]]
+    })
+    assert created.status_code == 200, created.text
+    milestone = created.json()
+    assert milestone["linked_item_count"] == 2
+    assert milestone["completed_item_count"] == 1
+    assert milestone["progress"] == 50
+
+    updated = client.patch(f"/api/milestones/{milestone['id']}", json={"status":"completed"})
+    assert updated.status_code == 200
+    assert updated.json()["status"] == "completed"
+    assert len(client.get(f"/api/projects/{project_id}/milestones").json()) == 1
+    assert client.get(f"/api/projects/{other_project_id}/milestones").json() == []
+    assert any("Milestone created" in e["message"] for e in client.get(f"/api/projects/{project_id}").json()["activity"])
+    assert client.delete(f"/api/milestones/{milestone['id']}").status_code == 200
