@@ -333,3 +333,67 @@ def test_assistant_retrieval_builds_context_windows_for_pdf_line_wraps():
         in passage
         for passage in passages
     )
+
+
+def test_optional_editor_and_viewer_roles_enforce_write_permissions(client, monkeypatch):
+    monkeypatch.setenv("DEMO_EDITOR_EMAIL", "editor@continuityai.app")
+    monkeypatch.setenv("DEMO_EDITOR_PASSWORD", "EditorPassForTests!")
+    monkeypatch.setenv("DEMO_VIEWER_EMAIL", "viewer@continuityai.app")
+    monkeypatch.setenv("DEMO_VIEWER_PASSWORD", "ViewerPassForTests!")
+
+    with TestClient(app) as anonymous:
+        editor_login = anonymous.post("/api/auth/login", json={"email": "editor@continuityai.app", "password": "EditorPassForTests!"})
+        assert editor_login.status_code == 200
+        assert editor_login.json()["role"] == "editor"
+        editor_headers = {"Authorization": "Bearer " + editor_login.json()["access_token"]}
+        project = anonymous.post("/api/projects", json={"name": "Editor workspace"}, headers=editor_headers)
+        assert project.status_code == 200
+
+        viewer_login = anonymous.post("/api/auth/login", json={"email": "viewer@continuityai.app", "password": "ViewerPassForTests!"})
+        assert viewer_login.status_code == 200
+        assert viewer_login.json()["role"] == "viewer"
+        viewer_headers = {"Authorization": "Bearer " + viewer_login.json()["access_token"]}
+        assert anonymous.get("/api/projects", headers=viewer_headers).status_code == 200
+        assert anonymous.post("/api/projects", json={"name": "Blocked workspace"}, headers=viewer_headers).status_code == 403
+        assert anonymous.post("/api/brand/guidelines", json={"name":"x","kind":"required_term","content":"x"}, headers=viewer_headers).status_code == 403
+
+
+def test_milestone_tracking_links_tasks_and_calculates_progress(client):
+    project_id = create_project(client)
+    other_project_id = create_project(client)
+    task_a = client.post(f"/api/projects/{project_id}/items", json={
+        "category":"task", "title":"Build API", "work_status":"done"
+    }).json()
+    task_b = client.post(f"/api/projects/{project_id}/items", json={
+        "category":"task", "title":"Test deployment", "work_status":"in_progress"
+    }).json()
+    foreign_task = client.post(f"/api/projects/{other_project_id}/items", json={
+        "category":"task", "title":"Foreign task"
+    }).json()
+
+    invalid = client.post(f"/api/projects/{project_id}/milestones", json={
+        "name":"Release", "item_ids":[task_a["id"], foreign_task["id"]]
+    })
+    assert invalid.status_code == 400
+
+    created = client.post(f"/api/projects/{project_id}/milestones", json={
+        "name":"Release 1", "description":"Ship the first release",
+        "owner":"Jayram", "due_date":"2026-11-20",
+        "status":"in_progress", "item_ids":[task_a["id"],task_b["id"]]
+    })
+    assert created.status_code == 200, created.text
+    milestone = created.json()
+    assert milestone["linked_item_count"] == 2
+    assert milestone["completed_item_count"] == 1
+    assert milestone["progress"] == 50
+
+    updated = client.patch(f"/api/milestones/{milestone['id']}", json={"status":"completed"})
+    assert updated.status_code == 200
+    assert updated.json()["status"] == "completed"
+    assert len(client.get(f"/api/projects/{project_id}/milestones").json()) == 1
+    assert client.get(f"/api/projects/{other_project_id}/milestones").json() == []
+    handover = client.get(f"/api/projects/{project_id}/handover").json()
+    assert handover["milestones"][0]["progress"] == 50
+    assert "## Project milestones" in client.get(f"/api/projects/{project_id}/handover.md").text
+    assert any("Milestone created" in e["message"] for e in client.get(f"/api/projects/{project_id}").json()["activity"])
+    assert client.delete(f"/api/milestones/{milestone['id']}").status_code == 200

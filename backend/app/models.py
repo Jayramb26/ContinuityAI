@@ -71,3 +71,16 @@ class BrandReview(Base):
     decision_note: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     decided_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class ProjectMilestone(Base):
+    __tablename__ = "project_milestones"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"))
+    name: Mapped[str] = mapped_column(String(180))
+    description: Mapped[str] = mapped_column(Text, default="")
+    owner: Mapped[str] = mapped_column(String(180), default="")
+    due_date: Mapped[str] = mapped_column(String(20), default="")
+    status: Mapped[str] = mapped_column(String(30), default="planned")
+    item_ids: Mapped[str] = mapped_column(Text, default="[]")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))

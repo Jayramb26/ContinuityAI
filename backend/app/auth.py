@@ -8,8 +8,10 @@ import time
 def _b64(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).decode("ascii").rstrip("=")
 
-def issue_token(subject: str, secret: str, ttl_seconds: int = 28800) -> str:
-    payload = {"sub": subject, "role": "owner", "exp": int(time.time()) + ttl_seconds}
+def issue_token(subject: str, secret: str, role: str = "owner", ttl_seconds: int = 28800) -> str:
+    if role not in {"owner", "editor", "viewer"}:
+        raise ValueError("Unsupported session role")
+    payload = {"sub": subject, "role": role, "exp": int(time.time()) + ttl_seconds}
     body = _b64(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
     signature = _b64(hmac.new(secret.encode("utf-8"), body.encode("ascii"), hashlib.sha256).digest())
     return body + "." + signature

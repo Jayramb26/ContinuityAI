@@ -46,3 +46,21 @@ class BrandGuidelineCreate(BaseModel):
 class BrandDecision(BaseModel):
     status: str
     decision_note: str = ""
+
+
+class MilestoneCreate(BaseModel):
+    name: str
+    description: str = ""
+    owner: str = ""
+    due_date: str = ""
+    status: str = "planned"
+    item_ids: list[int] = []
+
+
+class MilestoneUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    owner: str | None = None
+    due_date: str | None = None
+    status: str | None = None
+    item_ids: list[int] | None = None

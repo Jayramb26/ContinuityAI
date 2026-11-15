@@ -8,8 +8,8 @@ from fastapi.responses import Response, JSONResponse
 from sqlalchemy import select, text, inspect
 from sqlalchemy.orm import Session
 from .database import Base, engine, get_db
-from .models import Project, SourceDocument, KnowledgeItem, ActivityEvent, BrandGuideline, BrandReview
-from .schemas import ProjectCreate, ReviewUpdate, KnowledgeCreate, ActivityCreate, BrandGuidelineCreate, BrandDecision
+from .models import Project, SourceDocument, KnowledgeItem, ActivityEvent, BrandGuideline, BrandReview, ProjectMilestone
+from .schemas import ProjectCreate, ReviewUpdate, KnowledgeCreate, ActivityCreate, BrandGuidelineCreate, BrandDecision, MilestoneCreate, MilestoneUpdate
 from .ingestion import extract_text, chunks
 from .knowledge import heuristic_extract, ai_extract
 from .intelligence import analyze_project, answer_project_question
@@ -51,6 +51,16 @@ async def demo_access_control(request: Request, call_next):
             claims = verify_token(token, secret)
             if not claims:
                 return JSONResponse(status_code=401, content={"detail": "Sign in to access this workspace."})
+            role = claims.get("role", "viewer")
+            # Viewers may read and ask questions, but cannot mutate workspace data.
+            # The normalized integration endpoint has its own independent shared-secret check.
+            read_only_post = path.endswith("/ask")
+            integration_event = path.endswith("/integrations/events")
+            if request.method not in {"GET", "HEAD", "OPTIONS"} and role == "viewer" and not (request.method == "POST" and (read_only_post or integration_event)):
+                return JSONResponse(status_code=403, content={"detail": "Viewer access is read-only."})
+            # Only owners can change global brand rules and review decisions.
+            if path.startswith("/api/brand/") and request.method not in {"GET", "HEAD", "OPTIONS"} and role != "owner":
+                return JSONResponse(status_code=403, content={"detail": "Only workspace owners can manage brand governance."})
             request.state.auth = claims
     return await call_next(request)
 
@@ -63,17 +73,23 @@ def auth_config():
 @app.post("/api/auth/login")
 def auth_login(payload: dict):
     secret = os.getenv("AUTH_SECRET", "")
-    demo_email = os.getenv("DEMO_EMAIL", "")
-    demo_password = os.getenv("DEMO_PASSWORD", "")
     if not secret:
         raise HTTPException(503, "Demo authentication is not configured")
-    if not demo_email or not demo_password:
-        raise HTTPException(503, "Demo credentials are not configured")
     email = str(payload.get("email", "")).strip()
     password = str(payload.get("password", ""))
-    if not secrets.compare_digest(email, demo_email) or not secrets.compare_digest(password, demo_password):
-        raise HTTPException(401, "Incorrect demo email or password")
-    return {"access_token": issue_token(email, secret), "token_type": "bearer", "expires_in": 28800, "role": "owner"}
+    # Optional role-specific demo accounts. Existing DEMO_EMAIL/DEMO_PASSWORD remain
+    # the owner account for backwards compatibility with the current judge demo.
+    accounts = [
+        ("DEMO_EMAIL", "DEMO_PASSWORD", "owner"),
+        ("DEMO_EDITOR_EMAIL", "DEMO_EDITOR_PASSWORD", "editor"),
+        ("DEMO_VIEWER_EMAIL", "DEMO_VIEWER_PASSWORD", "viewer"),
+    ]
+    for email_key, password_key, role in accounts:
+        configured_email = os.getenv(email_key, "")
+        configured_password = os.getenv(password_key, "")
+        if configured_email and configured_password and secrets.compare_digest(email, configured_email) and secrets.compare_digest(password, configured_password):
+            return {"access_token": issue_token(email, secret, role=role), "token_type": "bearer", "expires_in": 28800, "role": role}
+    raise HTTPException(401, "Incorrect demo email or password")
 
 
 @app.get("/api/auth/me")
@@ -278,6 +294,92 @@ def create_knowledge_item(project_id: int, payload: KnowledgeCreate, db: Session
     db.commit(); db.refresh(item)
     return item_dict(item)
 
+
+def milestone_dict(row, db):
+    import json
+    ids = json.loads(row.item_ids or "[]")
+    linked = [db.get(KnowledgeItem, item_id) for item_id in ids]
+    linked = [item for item in linked if item and item.project_id == row.project_id]
+    total = len(linked)
+    completed = sum(1 for item in linked if item.work_status == "done")
+    return {"id": row.id, "project_id": row.project_id, "name": row.name,
+        "description": row.description, "owner": row.owner or "", "due_date": row.due_date or "",
+        "status": row.status, "item_ids": [item.id for item in linked],
+        "linked_item_count": total, "completed_item_count": completed,
+        "progress": round(completed / total * 100) if total else 0,
+        "created_at": row.created_at.isoformat()}
+
+
+def validate_milestone_items(project_id, item_ids, db):
+    ids = list(dict.fromkeys(item_ids or []))
+    if ids:
+        found = db.scalars(select(KnowledgeItem).where(
+            KnowledgeItem.id.in_(ids), KnowledgeItem.project_id == project_id
+        )).all()
+        if len(found) != len(ids):
+            raise HTTPException(400, "Every linked item must belong to this project.")
+    return ids
+
+
+@app.get("/api/projects/{project_id}/milestones")
+def list_milestones(project_id: int, db: Session = Depends(get_db)):
+    get_project_or_404(project_id, db)
+    rows = db.scalars(select(ProjectMilestone).where(
+        ProjectMilestone.project_id == project_id
+    ).order_by(ProjectMilestone.due_date.asc(), ProjectMilestone.id.asc())).all()
+    return [milestone_dict(row, db) for row in rows]
+
+
+@app.post("/api/projects/{project_id}/milestones")
+def create_milestone(project_id: int, payload: MilestoneCreate, db: Session = Depends(get_db)):
+    get_project_or_404(project_id, db)
+    if not payload.name.strip():
+        raise HTTPException(400, "Milestone name is required.")
+    if payload.status not in {"planned", "in_progress", "blocked", "completed"}:
+        raise HTTPException(400, "Invalid milestone status.")
+    ids = validate_milestone_items(project_id, payload.item_ids, db)
+    import json
+    row = ProjectMilestone(project_id=project_id, name=payload.name.strip(),
+        description=payload.description.strip(), owner=payload.owner.strip(),
+        due_date=payload.due_date.strip(), status=payload.status, item_ids=json.dumps(ids))
+    db.add(row); db.flush()
+    log_event(db, project_id, f'Milestone created: {row.name}', "milestone_created")
+    db.commit(); db.refresh(row)
+    return milestone_dict(row, db)
+
+
+@app.patch("/api/milestones/{milestone_id}")
+def update_milestone(milestone_id: int, payload: MilestoneUpdate, db: Session = Depends(get_db)):
+    row = db.get(ProjectMilestone, milestone_id)
+    if not row:
+        raise HTTPException(404, "Milestone not found.")
+    changes = payload.model_dump(exclude_unset=True)
+    if "name" in changes and changes["name"] is not None and not changes["name"].strip():
+        raise HTTPException(400, "Milestone name cannot be empty.")
+    if "status" in changes and changes["status"] not in {"planned", "in_progress", "blocked", "completed"}:
+        raise HTTPException(400, "Invalid milestone status.")
+    if "item_ids" in changes and changes["item_ids"] is not None:
+        import json
+        changes["item_ids"] = json.dumps(validate_milestone_items(row.project_id, changes["item_ids"], db))
+    for key, value in changes.items():
+        if value is not None:
+            setattr(row, key, value.strip() if isinstance(value, str) else value)
+    log_event(db, row.project_id, f'Milestone updated: {row.name}', "milestone_updated")
+    db.commit(); db.refresh(row)
+    return milestone_dict(row, db)
+
+
+@app.delete("/api/milestones/{milestone_id}")
+def delete_milestone(milestone_id: int, db: Session = Depends(get_db)):
+    row = db.get(ProjectMilestone, milestone_id)
+    if not row:
+        raise HTTPException(404, "Milestone not found.")
+    project_id, name = row.project_id, row.name
+    db.delete(row)
+    log_event(db, project_id, f'Milestone deleted: {name}', "milestone_deleted")
+    db.commit()
+    return {"deleted": milestone_id}
+
 @app.post("/api/projects/{project_id}/activity")
 def add_activity(project_id: int, payload: ActivityCreate, db: Session = Depends(get_db)):
     get_project_or_404(project_id, db)
@@ -353,6 +455,10 @@ def handover(project_id: int, db: Session = Depends(get_db)):
     overdue = [i for i in tasks if i.due_date and i.due_date < datetime.now(timezone.utc).date().isoformat() and i.work_status != "done"]
     blocked = [i for i in items if i.work_status == "blocked"]
     open_tasks = [i for i in tasks if i.work_status != "done"]
+    milestone_rows = db.scalars(select(ProjectMilestone).where(ProjectMilestone.project_id == project_id).order_by(ProjectMilestone.due_date.asc())).all()
+    milestones = [milestone_dict(row, db) for row in milestone_rows]
+    today = datetime.now(timezone.utc).date().isoformat()
+    overdue_milestones = [m for m in milestones if m["due_date"] and m["due_date"] < today and m["status"] != "completed"]
     coverage = sum(bool(categories[c]) for c in categories)
     readiness = round((coverage / 4) * 45 + (len(approved) / max(1, len(items))) * 25 +
                       (len(tasks) - len(unassigned)) / max(1, len(tasks)) * 15 +
@@ -362,6 +468,7 @@ def handover(project_id: int, db: Session = Depends(get_db)):
     if unassigned: next_steps.append(f"Assign owners to {len(unassigned)} task(s)")
     if overdue: next_steps.append(f"Resolve {len(overdue)} overdue task(s)")
     if blocked: next_steps.append(f"Unblock {len(blocked)} blocked item(s)")
+    if overdue_milestones: next_steps.append(f"Review {len(overdue_milestones)} overdue milestone(s)")
     if not next_steps: next_steps.append("Review the latest activity and confirm the handover is current")
     return {"project": project_dict(p), "generated_at": datetime.now(timezone.utc).isoformat(),
         "source_count": len(docs), "approved_count": len(approved), "review_count": len(gaps),
@@ -369,6 +476,7 @@ def handover(project_id: int, db: Session = Depends(get_db)):
         "tasks": [item_dict(i) for i in tasks], "risks": [item_dict(i) for i in risks],
         "unassigned_tasks": [item_dict(i) for i in unassigned], "overdue_tasks": [item_dict(i) for i in overdue],
         "blocked_items": [item_dict(i) for i in blocked], "open_tasks": [item_dict(i) for i in open_tasks],
+        "milestones": milestones, "overdue_milestones": overdue_milestones,
         "activity": [{"id": e.id, "event_type": e.event_type, "message": e.message, "actor": e.actor, "created_at": e.created_at.isoformat()} for e in events],
         "next_steps": next_steps}
 
@@ -387,7 +495,11 @@ def handover_markdown(project_id: int, db: Session = Depends(get_db)):
             due = f" | Due: {x['due_date']}" if x["due_date"] else ""
             lines.append(f"- **{x['title']}** — {x['detail']} [Work: {x['work_status']} | Priority: {x['priority']}{owner}{due}] (Source: document #{x['source_id']}; evidence: “{x['evidence']}”)")
         lines.append("")
-    lines += ["## Unfinished work and ownership"]
+    lines += ["## Project milestones"]
+    if not data.get("milestones"): lines.append("- No milestones recorded.")
+    for m in data.get("milestones", []):
+        lines.append(f"- **{m['name']}** | Status: {m['status']} | Progress: {m['progress']}% ({m['completed_item_count']}/{m['linked_item_count']} linked tasks) | Owner: {m['owner'] or 'UNASSIGNED'} | Due: {m['due_date'] or 'Not set'}")
+    lines += ["", "## Unfinished work and ownership"]
     if not data["open_tasks"]: lines.append("- No unfinished tasks recorded.")
     for x in data["open_tasks"]:
         lines.append(f"- {x['title']} | Owner: {x['owner'] or 'UNASSIGNED'} | Status: {x['work_status']} | Priority: {x['priority']} | Due: {x['due_date'] or 'Not set'}")
