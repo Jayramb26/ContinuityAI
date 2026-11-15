@@ -51,6 +51,16 @@ async def demo_access_control(request: Request, call_next):
             claims = verify_token(token, secret)
             if not claims:
                 return JSONResponse(status_code=401, content={"detail": "Sign in to access this workspace."})
+            role = claims.get("role", "viewer")
+            # Viewers may read and ask questions, but cannot mutate workspace data.
+            # The normalized integration endpoint has its own independent shared-secret check.
+            read_only_post = path.endswith("/ask")
+            integration_event = path.endswith("/integrations/events")
+            if request.method not in {"GET", "HEAD", "OPTIONS"} and role == "viewer" and not (request.method == "POST" and (read_only_post or integration_event)):
+                return JSONResponse(status_code=403, content={"detail": "Viewer access is read-only."})
+            # Only owners can change global brand rules and review decisions.
+            if path.startswith("/api/brand/") and request.method not in {"GET", "HEAD", "OPTIONS"} and role != "owner":
+                return JSONResponse(status_code=403, content={"detail": "Only workspace owners can manage brand governance."})
             request.state.auth = claims
     return await call_next(request)
 
@@ -63,17 +73,23 @@ def auth_config():
 @app.post("/api/auth/login")
 def auth_login(payload: dict):
     secret = os.getenv("AUTH_SECRET", "")
-    demo_email = os.getenv("DEMO_EMAIL", "")
-    demo_password = os.getenv("DEMO_PASSWORD", "")
     if not secret:
         raise HTTPException(503, "Demo authentication is not configured")
-    if not demo_email or not demo_password:
-        raise HTTPException(503, "Demo credentials are not configured")
     email = str(payload.get("email", "")).strip()
     password = str(payload.get("password", ""))
-    if not secrets.compare_digest(email, demo_email) or not secrets.compare_digest(password, demo_password):
-        raise HTTPException(401, "Incorrect demo email or password")
-    return {"access_token": issue_token(email, secret), "token_type": "bearer", "expires_in": 28800, "role": "owner"}
+    # Optional role-specific demo accounts. Existing DEMO_EMAIL/DEMO_PASSWORD remain
+    # the owner account for backwards compatibility with the current judge demo.
+    accounts = [
+        ("DEMO_EMAIL", "DEMO_PASSWORD", "owner"),
+        ("DEMO_EDITOR_EMAIL", "DEMO_EDITOR_PASSWORD", "editor"),
+        ("DEMO_VIEWER_EMAIL", "DEMO_VIEWER_PASSWORD", "viewer"),
+    ]
+    for email_key, password_key, role in accounts:
+        configured_email = os.getenv(email_key, "")
+        configured_password = os.getenv(password_key, "")
+        if configured_email and configured_password and secrets.compare_digest(email, configured_email) and secrets.compare_digest(password, configured_password):
+            return {"access_token": issue_token(email, secret, role=role), "token_type": "bearer", "expires_in": 28800, "role": role}
+    raise HTTPException(401, "Incorrect demo email or password")
 
 
 @app.get("/api/auth/me")
