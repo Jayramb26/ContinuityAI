@@ -238,3 +238,8 @@ README.md
 ### Version-aware handover receipts
 
 A successor acknowledgement is compared with the latest non-acknowledgement project activity. If tracked source material, decisions, tasks, or other workspace work changes after the response, the receipt is marked **Review required** until the member reviews and acknowledges again. Changes made outside ContinuityAI's tracked workflows are not detected.
+
+
+### Handover change digest
+
+When a successor's acknowledgement becomes stale, the workspace receipt shows the tracked activity entries recorded after that response, including event messages and timestamps. The API includes up to the ten most recent entries per acknowledgement and a total count. This digest is limited to activity recorded by ContinuityAI.

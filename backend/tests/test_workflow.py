@@ -700,6 +700,8 @@ def test_handover_acknowledgement_is_member_scoped_and_audited(client, monkeypat
     successor_receipt = next(row for row in stale_view["items"] if row["email"] == "successor@continuityai.app")
     assert successor_receipt["is_stale"] is True
     assert successor_receipt["status"] == "accepted"
+    assert successor_receipt["changes_after_ack_count"] >= 1
+    assert any("Updated" in change["message"] for change in successor_receipt["changes_after_ack"])
     assert client.get(f"/api/projects/{other_project_id}/acknowledgements").json()["items"] == []
     activity = client.get(f"/api/projects/{project_id}").json()["activity"]
     assert any("requested handover clarification" in event["message"] for event in activity)

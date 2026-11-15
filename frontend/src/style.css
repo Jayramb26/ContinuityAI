@@ -255,3 +255,7 @@
 
 /* Version-aware handover receipt state */
 .ack-status.stale{background:#fff1d8;color:#8a5a12}.ack-stale{border:1px solid #e8bd73!important;background:#fffaf0}.ack-stale-note{color:#95631b!important;font-size:11px}
+
+
+/* Handover change digest */
+.ack-change-digest{margin:10px 0;padding:10px 12px;border:1px solid #ead6ad;border-radius:9px;background:#fffaf1}.ack-change-digest>b{display:block;margin-bottom:7px;color:#8a5a12;font-size:10px}.ack-change-digest>div{display:flex;flex-direction:column;gap:3px;padding:6px 0;border-top:1px solid #f0e5d2}.ack-change-digest>div span{font-size:11px;color:#536575}.ack-change-digest>div small{font-size:9px;color:#8b9aa5}

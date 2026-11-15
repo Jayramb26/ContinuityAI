@@ -753,14 +753,24 @@ def list_handover_acknowledgements(project_id: int, request: Request, db: Sessio
         ~ActivityEvent.event_type.like("handover_%")
     ).order_by(ActivityEvent.created_at.desc()).limit(1))
     latest_change_at = latest_change.created_at if latest_change else None
+    tracked_changes = db.scalars(select(ActivityEvent).where(
+        ActivityEvent.project_id == project_id,
+        ~ActivityEvent.event_type.like("handover_%")
+    ).order_by(ActivityEvent.created_at.asc())).all()
     acknowledgement_items = []
     for row in rows:
-        stale = bool(latest_change_at and latest_change_at > row.updated_at)
+        changes_after_ack = [event for event in tracked_changes if event.created_at > row.updated_at]
+        stale = bool(changes_after_ack)
         acknowledgement_items.append({
             "id": row.id, "email": row.email, "status": row.status, "note": row.note,
             "is_stale": stale,
-            "stale_since": latest_change_at.isoformat() if stale else None,
+            "stale_since": changes_after_ack[0].created_at.isoformat() if stale else None,
             "stale_reason": "Tracked project activity changed after this response." if stale else "",
+            "changes_after_ack": [{
+                "event_type": event.event_type, "message": event.message,
+                "created_at": event.created_at.isoformat()
+            } for event in changes_after_ack[-10:]],
+            "changes_after_ack_count": len(changes_after_ack),
             "created_at": row.created_at.isoformat(), "updated_at": row.updated_at.isoformat()
         })
     return {
