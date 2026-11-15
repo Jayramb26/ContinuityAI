@@ -428,7 +428,7 @@ def update_handover_assignment(project_id: int, payload: dict, request: Request,
     project = get_project_or_404(project_id, db)
     email = str(payload.get("email", "")).strip().lower()
     due_date = str(payload.get("acceptance_due_date", "")).strip()
-    if email and not re.fullmatch(r"[^@\\s]+@[^@\\s]+\\.[^@\\s]+", email):
+    if email and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
         raise HTTPException(400, "Enter a valid successor email address.")
     if email and not db.scalar(select(ProjectMember).where(ProjectMember.project_id == project_id, ProjectMember.email == email)):
         raise HTTPException(400, "The designated successor must already be a member of this workspace.")
