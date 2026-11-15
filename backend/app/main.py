@@ -338,7 +338,7 @@ def add_project_member(project_id: int, payload: dict, request: Request, db: Ses
     get_project_or_404(project_id, db)
     email = str(payload.get("email", "")).strip().lower()
     role = str(payload.get("role", "viewer")).strip().lower()
-    if not re.fullmatch(r"[^@\\s]+@[^@\\s]+\\.[^@\\s]+", email):
+    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
         raise HTTPException(400, "Enter a valid email address.")
     if role not in {"editor", "viewer"}:
         raise HTTPException(400, "New members can be editors or viewers.")
