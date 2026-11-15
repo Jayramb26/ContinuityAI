@@ -243,3 +243,8 @@ A successor acknowledgement is compared with the latest non-acknowledgement proj
 ### Handover change digest
 
 When a successor's acknowledgement becomes stale, the workspace receipt shows the tracked activity entries recorded after that response, including event messages and timestamps. The API includes up to the ten most recent entries per acknowledgement and a total count. This digest is limited to activity recorded by ContinuityAI.
+
+
+### Designated handover successor
+
+Workspace owners can assign one existing workspace member as the accountable successor and set an acceptance deadline. The handover report exposes assignment states: unassigned, awaiting acceptance, overdue, accepted, or review required when the successor's acceptance became stale after tracked project changes. Deadlines are date-based (YYYY-MM-DD); overdue is calculated at read time and does not send notifications. The selected successor must already have workspace access.
