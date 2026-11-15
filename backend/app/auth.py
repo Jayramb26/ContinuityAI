@@ -31,3 +31,24 @@ def verify_token(token: str, secret: str):
         return payload
     except (ValueError, TypeError, json.JSONDecodeError):
         return None
+
+
+def hash_password(password: str) -> str:
+    """PBKDF2-HMAC-SHA256 password hash with a per-password random salt."""
+    import os
+    salt = os.urandom(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 310000)
+    return "pbkdf2_sha256$310000$" + _b64(salt) + "$" + _b64(digest)
+
+
+def verify_password(password: str, encoded: str) -> bool:
+    try:
+        algorithm, rounds, salt_text, digest_text = encoded.split("$", 3)
+        if algorithm != "pbkdf2_sha256" or int(rounds) < 100000:
+            return False
+        salt = base64.urlsafe_b64decode(salt_text + "=" * (-len(salt_text) % 4))
+        expected = base64.urlsafe_b64decode(digest_text + "=" * (-len(digest_text) % 4))
+        actual = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, int(rounds))
+        return hmac.compare_digest(actual, expected)
+    except (ValueError, TypeError):
+        return False
