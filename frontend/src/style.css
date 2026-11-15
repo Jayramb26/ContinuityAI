@@ -160,6 +160,18 @@
 .auth-card .toast{margin:14px 0}
 
 
+.task-dependency-panel{display:grid;gap:8px;margin:13px 0;padding:12px;border:1px solid #e5ecef;border-radius:8px;background:#fbfdfd}
+.dependency-panel-heading{display:grid;gap:3px}
+.dependency-panel-heading b{font-size:10px;color:#40596a}
+.dependency-panel-heading small{font-size:9px;color:#8a98a3}
+.task-dependency-panel select{width:100%;min-height:34px;padding:7px 9px;border:1px solid #dfe7eb;border-radius:6px;background:#fff;color:#526779;font:10px 'DM Sans',sans-serif}
+.dependency-chip{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border:1px solid #e8edf0;border-radius:7px;background:#fff}
+.dependency-chip>span{display:grid;gap:3px;min-width:0}
+.dependency-chip b{font-size:10px;color:#526779;overflow-wrap:anywhere}
+.dependency-chip small{font-size:9px;color:#9a7b4c}
+.dependency-chip button{flex:none;border:0;background:transparent;color:#9b625c;font-size:9px;font-weight:700;cursor:pointer}
+.dependency-chip.dependency-done{border-color:#d8ebe2;background:#f7fcf9}
+.dependency-chip.dependency-done small{color:#4e9076}
 .milestone-task-picker{display:grid;gap:6px;max-height:260px;overflow:auto;padding:10px;border:1px solid var(--border,#e5e7eb);border-radius:12px;background:var(--surface,#fff)}
 .milestone-task-option{display:flex;align-items:center;gap:10px;min-width:0;padding:9px 10px;border-radius:8px;cursor:pointer;transition:background .15s}
 .milestone-task-option:hover{background:rgba(120,130,150,.10)}
