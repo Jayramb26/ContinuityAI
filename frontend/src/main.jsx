@@ -51,6 +51,9 @@ function App() {
   const [currentAckEmail, setCurrentAckEmail] = useState("");
   const [ackNote, setAckNote] = useState("");
   const [ackBusy, setAckBusy] = useState(false);
+  const [successorEmail, setSuccessorEmail] = useState("");
+  const [successorDueDate, setSuccessorDueDate] = useState("");
+  const [assignmentBusy, setAssignmentBusy] = useState(false);
   const [members, setMembers] = useState([]);
   const [memberEmail, setMemberEmail] = useState("");
   const [memberRole, setMemberRole] = useState("viewer");
@@ -217,11 +220,15 @@ function App() {
   const select = async (id) => {
     setBusy(true); setError("");
     try {
-      const [project, summary] = await Promise.all([
-        req("/projects/" + id),
-        req("/projects/" + id + "/handover")
+      const [project, summary, receipt] = await Promise.all([
+        req("/projects/" + id), req("/projects/" + id + "/handover"),
+        req("/projects/" + id + "/acknowledgements")
       ]);
       setActive(id); setDetail(project); setHandover(summary);
+      setHandoverAcks(receipt.items || []); setHandoverAckMembers(receipt.members || []);
+      setCurrentAckEmail(receipt.current_user_email || "");
+      setSuccessorEmail(summary.handover_assignment?.email || "");
+      setSuccessorDueDate(summary.handover_assignment?.acceptance_due_date || "");
       setPage("project"); setTab("overview"); setMobileNav(false);
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }
@@ -439,6 +446,21 @@ function App() {
       setHandoverAckMembers(result.members || []);
       setCurrentAckEmail(result.current_user_email || "");
     } catch (e) { setError(e.message); }
+  };
+
+  const saveHandoverAssignment = async (event) => {
+    event.preventDefault();
+    if (!active) return;
+    setAssignmentBusy(true); setError("");
+    try {
+      await req("/projects/" + active + "/handover-assignment", { method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: successorEmail, acceptance_due_date: successorDueDate })
+      });
+      await select(active); setTab("handover");
+      setNotice("Designated successor and acceptance deadline saved.");
+    } catch (e) { setError(e.message); }
+    finally { setAssignmentBusy(false); }
   };
 
   const submitHandoverAcknowledgement = async (status) => {
@@ -852,7 +874,17 @@ function App() {
                 <div className="handover-layout">
                   <section className="surface-card handover-main">
                     <div className="section-heading"><div><span className="eyebrow">HANDOVER REPORT</span><h2>Project readiness</h2><p className="section-subtitle">A snapshot of the knowledge that is ready to transfer.</p></div><a className="primary-button" href={API + "/projects/" + active + "/handover.md"}><Download size={15}/> Download .md</a></div>
-                    <section className="handover-acceptance-panel">
+                                        <section className="handover-assignment-panel">
+                      <div className="section-heading"><div><span className="eyebrow">HANDOVER OWNERSHIP</span><h3>Designated successor</h3><p className="section-subtitle">Choose one workspace member accountable for accepting this handover.</p></div><span className={"ack-status " + (handover?.handover_assignment?.status === "accepted" ? "accepted" : handover?.handover_assignment?.is_overdue ? "stale" : "pending")}>{(handover?.handover_assignment?.status || "unassigned").replaceAll("_", " ")}</span></div>
+                      <form className="handover-assignment-form" onSubmit={saveHandoverAssignment}>
+                        <label>Successor<select value={successorEmail} onChange={e => setSuccessorEmail(e.target.value)}><option value="">No successor assigned</option>{handoverAckMembers.map(member => <option key={member.email} value={member.email}>{member.email} · {member.role}</option>)}</select></label>
+                        <label>Acceptance deadline<input type="date" value={successorDueDate} onChange={e => setSuccessorDueDate(e.target.value)}/></label>
+                        <button type="submit" className="primary-button" disabled={assignmentBusy}>{assignmentBusy ? "Saving…" : "Save assignment"}</button>
+                      </form>
+                      {handover?.handover_assignment?.email && <p className="section-subtitle">{handover.handover_assignment.email} · {handover.handover_assignment.acceptance_due_date ? "Due " + handover.handover_assignment.acceptance_due_date : "No acceptance deadline"}{handover.handover_assignment.is_overdue ? " · Acceptance is overdue." : ""}</p>}
+                      <p className="brand-disclaimer">Only workspace owners can change this assignment. The selected successor must already be a workspace member. Overdue is calculated from the date and current acknowledgement state.</p>
+                    </section>
+<section className="handover-acceptance-panel">
                       <div className="section-heading"><div><span className="eyebrow">HANDOVER RECEIPT</span><h3>Successor acknowledgement</h3><p className="section-subtitle">A workspace member can confirm receipt or request missing context. Responses are attributed to the signed-in account and recorded in project activity.</p></div><span className="review-status status-approved">{handoverAcks.length} response(s)</span></div>
                       {(() => { const mine = handoverAcks.find(row => row.email === currentAckEmail); return mine ? <div className={"ack-current-status" + (mine.is_stale ? " ack-stale" : "")}><b>{mine.is_stale ? "Your acknowledgement is out of date" : mine.status === "accepted" ? "You acknowledged this handover" : "You requested clarification"}</b><small>{mine.is_stale ? "Project information changed after your response. Review the latest handover and acknowledge again." : new Date(mine.updated_at).toLocaleString() + " · " + mine.email}</small>{mine.note && <p>{mine.note}</p>}{mine.is_stale && <div className="ack-change-digest"><b>What changed since your acknowledgement ({mine.changes_after_ack_count || 0})</b>{(mine.changes_after_ack || []).map((change, index) => <div key={change.created_at + "-" + index}><span>{change.message}</span><small>{new Date(change.created_at).toLocaleString()}</small></div>)}</div>}</div> : <p className="section-subtitle">You have not responded to this handover yet.</p>; })()}
                       <label className="ack-note-label">Clarification note (required only when requesting follow-up)<textarea rows={3} maxLength={2000} value={ackNote} onChange={e => setAckNote(e.target.value)} placeholder="What is missing, unclear or needs confirmation?"/></label>
