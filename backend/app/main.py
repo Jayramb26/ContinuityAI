@@ -1,6 +1,7 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import os
+import hashlib
 import secrets
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -516,7 +517,7 @@ def create_handover_share(project_id: int, payload: dict, request: Request, db: 
     if hours < 1 or hours > 720:
         raise HTTPException(400, "Share links must expire between 1 hour and 30 days.")
     raw_token = secrets.token_urlsafe(32)
-    expires_at = datetime.now(timezone.utc) + __import__("datetime").timedelta(hours=hours)
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=hours)
     claims = getattr(request.state, "auth", None) or {}
     row = HandoverShare(project_id=project_id,
         token_hash=hashlib.sha256(raw_token.encode("utf-8")).hexdigest(),
