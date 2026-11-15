@@ -109,25 +109,135 @@ def auth_config():
 
 
 @app.post("/api/auth/login")
-def auth_login(payload: dict):
+def auth_login(payload: dict, db: Session = Depends(get_db)):
     secret = os.getenv("AUTH_SECRET", "")
     if not secret:
-        raise HTTPException(503, "Demo authentication is not configured")
-    email = str(payload.get("email", "")).strip()
+        raise HTTPException(503, "Authentication is not configured")
+    email = str(payload.get("email", "")).strip().lower()
     password = str(payload.get("password", ""))
-    # Optional role-specific demo accounts. Existing DEMO_EMAIL/DEMO_PASSWORD remain
-    # the owner account for backwards compatibility with the current judge demo.
+    if not email or not password:
+        raise HTTPException(400, "Email and password are required.")
+    account = db.scalar(select(UserAccount).where(UserAccount.email == email))
+    if account and verify_password(password, account.password_hash):
+        return {"access_token": issue_token(email, secret, role="viewer"), "token_type": "bearer", "expires_in": 28800, "role": "viewer"}
+    # Keep the shared judge demo and optional role-specific demo accounts working.
     accounts = [
         ("DEMO_EMAIL", "DEMO_PASSWORD", "owner"),
         ("DEMO_EDITOR_EMAIL", "DEMO_EDITOR_PASSWORD", "editor"),
         ("DEMO_VIEWER_EMAIL", "DEMO_VIEWER_PASSWORD", "viewer"),
     ]
     for email_key, password_key, role in accounts:
-        configured_email = os.getenv(email_key, "")
+        configured_email = os.getenv(email_key, "").strip().lower()
         configured_password = os.getenv(password_key, "")
         if configured_email and configured_password and secrets.compare_digest(email, configured_email) and secrets.compare_digest(password, configured_password):
             return {"access_token": issue_token(email, secret, role=role), "token_type": "bearer", "expires_in": 28800, "role": role}
-    raise HTTPException(401, "Incorrect demo email or password")
+    raise HTTPException(401, "Incorrect email or password")
+
+
+@app.post("/api/projects/{project_id}/invitations")
+def create_workspace_invitation(project_id: int, payload: dict, request: Request, db: Session = Depends(get_db)):
+    get_project_or_404(project_id, db)
+    email = str(payload.get("email", "")).strip().lower()
+    role = str(payload.get("role", "viewer")).strip().lower()
+    if not re.fullmatch(r"[^@\\s]+@[^@\\s]+\\.[^@\\s]+", email):
+        raise HTTPException(400, "Enter a valid email address.")
+    if role not in {"editor", "viewer"}:
+        raise HTTPException(400, "Invitations can grant editor or viewer access only.")
+    existing_member = db.scalar(select(ProjectMember).where(ProjectMember.project_id == project_id, ProjectMember.email == email))
+    if existing_member:
+        raise HTTPException(409, "This person is already a workspace member. Update their role in Team access.")
+    now = datetime.now(timezone.utc)
+    pending = db.scalars(select(WorkspaceInvitation).where(
+        WorkspaceInvitation.project_id == project_id,
+        WorkspaceInvitation.email == email,
+        WorkspaceInvitation.accepted_at.is_(None),
+        WorkspaceInvitation.revoked_at.is_(None)
+    )).all()
+    for old in pending:
+        old.revoked_at = now
+    token = secrets.token_urlsafe(32)
+    actor = str((getattr(request.state, "auth", None) or {}).get("sub", ""))
+    invitation = WorkspaceInvitation(project_id=project_id, email=email, role=role,
+        token_hash=hashlib.sha256(token.encode("utf-8")).hexdigest(),
+        created_by=actor, expires_at=now + timedelta(days=7))
+    db.add(invitation)
+    log_event(db, project_id, f"Workspace invitation created for {email} as {role}", "invitation_created", actor=actor)
+    db.commit()
+    db.refresh(invitation)
+    return {"id": invitation.id, "email": email, "role": role, "token": token,
+        "expires_at": invitation.expires_at.isoformat(), "expires_in_days": 7}
+
+
+@app.get("/api/projects/{project_id}/invitations")
+def list_workspace_invitations(project_id: int, db: Session = Depends(get_db)):
+    get_project_or_404(project_id, db)
+    rows = db.scalars(select(WorkspaceInvitation).where(
+        WorkspaceInvitation.project_id == project_id,
+        WorkspaceInvitation.accepted_at.is_(None),
+        WorkspaceInvitation.revoked_at.is_(None)
+    ).order_by(WorkspaceInvitation.created_at.desc())).all()
+    return [{"id": row.id, "email": row.email, "role": row.role,
+        "created_by": row.created_by, "created_at": row.created_at.isoformat(),
+        "expires_at": row.expires_at.isoformat()} for row in rows]
+
+
+@app.delete("/api/projects/{project_id}/invitations/{invitation_id}")
+def revoke_workspace_invitation(project_id: int, invitation_id: int, request: Request, db: Session = Depends(get_db)):
+    row = db.scalar(select(WorkspaceInvitation).where(
+        WorkspaceInvitation.id == invitation_id,
+        WorkspaceInvitation.project_id == project_id))
+    if not row:
+        raise HTTPException(404, "Invitation not found.")
+    if row.accepted_at:
+        raise HTTPException(409, "This invitation has already been accepted.")
+    row.revoked_at = datetime.now(timezone.utc)
+    actor = str((getattr(request.state, "auth", None) or {}).get("sub", ""))
+    log_event(db, project_id, f"Workspace invitation for {row.email} revoked", "invitation_revoked", actor=actor)
+    db.commit()
+    return {"status": "revoked"}
+
+
+@app.post("/api/invitations/accept")
+def accept_workspace_invitation(payload: dict, db: Session = Depends(get_db)):
+    secret = os.getenv("AUTH_SECRET", "")
+    if not secret:
+        raise HTTPException(503, "Authentication is not configured")
+    token = str(payload.get("token", "")).strip()
+    password = str(payload.get("password", ""))
+    if not token:
+        raise HTTPException(400, "Invitation token is required.")
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    invitation = db.scalar(select(WorkspaceInvitation).where(WorkspaceInvitation.token_hash == token_hash))
+    if not invitation or invitation.revoked_at or invitation.accepted_at:
+        raise HTTPException(404, "This invitation is invalid, revoked, or already used.")
+    expiry = invitation.expires_at
+    if expiry.tzinfo is None:
+        expiry = expiry.replace(tzinfo=timezone.utc)
+    if expiry <= datetime.now(timezone.utc):
+        raise HTTPException(410, "This invitation has expired. Ask the workspace owner for a new one.")
+    account = db.scalar(select(UserAccount).where(UserAccount.email == invitation.email))
+    if not account:
+        if len(password) < 12:
+            raise HTTPException(400, "Create a password with at least 12 characters.")
+        account = UserAccount(email=invitation.email, password_hash=hash_password(password))
+        db.add(account)
+    elif password:
+        raise HTTPException(409, "An account already exists for this email. Sign in to accept the invitation.")
+    member = db.scalar(select(ProjectMember).where(
+        ProjectMember.project_id == invitation.project_id,
+        ProjectMember.email == invitation.email))
+    if member:
+        member.role = invitation.role
+    else:
+        db.add(ProjectMember(project_id=invitation.project_id, email=invitation.email,
+            role=invitation.role, added_by=invitation.created_by))
+    invitation.accepted_at = datetime.now(timezone.utc)
+    log_event(db, invitation.project_id, f"{invitation.email} accepted a workspace invitation as {invitation.role}",
+        "invitation_accepted", actor=invitation.email)
+    db.commit()
+    access_token = issue_token(invitation.email, secret, role="viewer")
+    return {"status": "accepted", "email": invitation.email, "role": invitation.role,
+        "access_token": access_token, "token_type": "bearer", "expires_in": 28800}
 
 
 @app.get("/api/auth/me")
