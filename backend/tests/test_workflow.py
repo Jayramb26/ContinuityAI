@@ -643,6 +643,10 @@ def test_workspace_invitation_revocation_and_expiry(client):
 
 def test_handover_acknowledgement_is_member_scoped_and_audited(client, monkeypatch):
     project_id = create_project(client)
+    uploaded = client.post(f"/api/projects/{project_id}/upload", files={
+        "file": ("handover-notes.txt", b"Decision: Use FastAPI for the backend. Task: Jayram owns deployment testing.", "text/plain")
+    })
+    assert uploaded.status_code == 200, uploaded.text
     other_project_id = create_project(client)
     monkeypatch.setenv("DEMO_VIEWER_EMAIL", "successor@continuityai.app")
     monkeypatch.setenv("DEMO_VIEWER_PASSWORD", "SuccessorPass2026!")
