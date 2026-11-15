@@ -189,7 +189,7 @@ def test_explicit_task_dependencies_validate_cycles_and_export(client):
 
     handover = client.get(f"/api/projects/{project_id}/handover").json()
     assert len(handover["task_dependencies"]) == 2
-    assert {x["item_id"] for x in handover["waiting_tasks"]} == {second["id"], third["id"]}
+    assert {x["id"] for x in handover["waiting_tasks"]} == {second["id"], third["id"]}
     assert "waiting on prerequisites" in " ".join(handover["next_steps"])
     assert client.patch(f"/api/items/{first['id']}", json={"work_status": "done"}).status_code == 200
     handover = client.get(f"/api/projects/{project_id}/handover").json()
