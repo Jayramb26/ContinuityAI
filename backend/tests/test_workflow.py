@@ -188,6 +188,8 @@ def test_explicit_task_dependencies_validate_cycles_and_export(client):
     assert client.post(f"/api/items/{first['id']}/dependencies", json={"depends_on_item_id": third["id"]}).status_code == 400
 
     handover = client.get(f"/api/projects/{project_id}/handover").json()
+    assert handover["readiness"] == sum(x["score"] for x in handover["readiness_breakdown"].values())
+    assert handover["readiness_breakdown"]["dependency_health"]["score"] == 0
     assert len(handover["task_dependencies"]) == 2
     assert {x["id"] for x in handover["waiting_tasks"]} == {second["id"], third["id"]}
     assert "waiting on prerequisites" in " ".join(handover["next_steps"])
@@ -197,6 +199,8 @@ def test_explicit_task_dependencies_validate_cycles_and_export(client):
     assert {x["item_id"] for x in handover["task_dependencies"] if not x["satisfied"]} == {third["id"]}
     exported = client.get(f"/api/projects/{project_id}/handover.md")
     assert "## Task dependencies" in exported.text
+    assert "## Readiness score breakdown" in exported.text
+    assert "Dependency health: 0/10" in exported.text
     assert "Deploy API" in exported.text and "Prepare database migration" in exported.text
     assert client.delete(f"/api/items/{second['id']}/dependencies/{added.json()['id']}").status_code == 200
     assert len(client.get(f"/api/projects/{project_id}/handover").json()["task_dependencies"]) == 1
