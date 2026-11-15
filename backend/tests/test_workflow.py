@@ -506,7 +506,7 @@ def test_share_expiry_and_viewer_cannot_manage_links(client, monkeypatch):
         assert login.status_code == 200
         headers = {"Authorization": "Bearer " + login.json()["access_token"]}
         assert anonymous.post(f"/api/projects/{project_id}/shares", json={"expires_in_hours": 24}, headers=headers).status_code == 404
-        assert anonymous.get(f"/api/projects/{project_id}/shares", headers=headers).status_code == 403
+        assert anonymous.get(f"/api/projects/{project_id}/shares", headers=headers).status_code == 404
 
 
 def test_workspace_membership_is_project_scoped_and_roles_are_enforced(client, monkeypatch):
