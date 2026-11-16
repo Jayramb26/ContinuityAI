@@ -66,6 +66,15 @@ MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 allowed_origins = [x.strip() for x in os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173,https://continuityai-web.onrender.com").split(",") if x.strip()]
 app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
+@app.get("/")
+def root():
+    return {
+        "message": "ContinuityAI API is running",
+        "status": "ok",
+        "health": "/api/health",
+        "docs": "/docs",
+    }
+
 @app.middleware("http")
 async def demo_access_control(request: Request, call_next):
     """Require project membership and enforce workspace-specific roles."""
