@@ -32,6 +32,15 @@ def create_project(client):
     return response.json()["id"]
 
 def test_health_and_brand_governance_routes(client):
+    root = client.get("/")
+    assert root.status_code == 200
+    assert root.json() == {
+        "message": "ContinuityAI API is running",
+        "status": "ok",
+        "health": "/api/health",
+        "docs": "/docs",
+    }
+
     health = client.get("/api/health")
     assert health.status_code == 200
     assert health.json()["status"] == "ok"
