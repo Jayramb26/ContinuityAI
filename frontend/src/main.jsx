@@ -10,6 +10,18 @@ import "./style.css";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
 
+// Bound every API request so a sleeping or unreachable backend cannot leave the UI
+// on the connection screen forever. The user gets a visible error and can retry.
+async function fetchWithTimeout(url, options = {}, timeoutMs = 45000) {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
 function App() {
   const [projects, setProjects] = useState([]);
   const [active, setActive] = useState(null);
@@ -77,7 +89,7 @@ function App() {
     const headers = new Headers(options.headers || {});
     const token = authToken || sessionStorage.getItem("continuityai_access_token");
     if (token) headers.set("Authorization", "Bearer " + token);
-    const response = await fetch(API + path, { ...options, headers });
+    const response = await fetchWithTimeout(API + path, { ...options, headers });
     if (!response.ok) {
       if (response.status === 401 && authEnabled) { sessionStorage.removeItem("continuityai_access_token"); setAuthToken(""); }
       let data = {};
@@ -117,19 +129,19 @@ function App() {
       try {
         const shareToken = new URLSearchParams(window.location.search).get("share");
         if (shareToken) {
-          const sharedResponse = await fetch(API + "/shared/" + encodeURIComponent(shareToken));
+          const sharedResponse = await fetchWithTimeout(API + "/shared/" + encodeURIComponent(shareToken));
           const sharedData = await sharedResponse.json();
           if (!sharedResponse.ok) throw new Error(sharedData.detail || "This handover link is invalid or expired.");
           setSharedHandover(sharedData);
           return;
         }
-        const response = await fetch(API + "/auth/config");
+        const response = await fetchWithTimeout(API + "/auth/config");
         const config = await response.json();
         setAuthEnabled(Boolean(config.auth_enabled));
         if (config.auth_enabled) {
           const saved = sessionStorage.getItem("continuityai_access_token");
           if (saved) {
-            const check = await fetch(API + "/auth/me", { headers: { Authorization: "Bearer " + saved } });
+            const check = await fetchWithTimeout(API + "/auth/me", { headers: { Authorization: "Bearer " + saved } });
             if (check.ok) {
               setAuthToken(saved);
               await refresh(null);
@@ -146,7 +158,7 @@ function App() {
   const signIn = async (event) => {
     event.preventDefault(); setLoginError("");
     try {
-      const response = await fetch(API + "/auth/login", {
+      const response = await fetchWithTimeout(API + "/auth/login", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: loginEmail, password: loginPassword })
       });
@@ -361,7 +373,7 @@ function App() {
   const acceptInvitation = async (event) => {
     event.preventDefault(); setLoginError("");
     try {
-      const response = await fetch(API + "/invitations/accept", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: inviteToken, password: invitePassword }) });
+      const response = await fetchWithTimeout(API + "/invitations/accept", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: inviteToken, password: invitePassword }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || "Invitation acceptance failed");
       sessionStorage.setItem("continuityai_access_token", data.access_token); setAuthToken(data.access_token);
@@ -599,7 +611,7 @@ function App() {
     );
   }
 
-  if (!authChecked) return <div className="auth-screen"><div className="auth-card"><div className="brand-mark"><BrainCircuit size={24}/></div><h1>ContinuityAI</h1><p>Connecting to your project workspace…</p></div></div>;
+  if (!authChecked) return <div className="auth-screen"><div className="auth-card"><div className="brand-mark"><BrainCircuit size={24}/></div><h1>ContinuityAI</h1><p>{error || "Connecting to your project workspace…"}</p>{error && <><p className="brand-disclaimer">The API did not respond in time. It may be waking up or unavailable.</p><button type="button" className="primary-button" onClick={() => window.location.reload()}>Retry connection</button></>}</div></div>;
   if (authEnabled && !authToken) return (
     <div className="auth-screen">
       <section className="auth-card">
