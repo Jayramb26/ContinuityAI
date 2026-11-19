@@ -611,7 +611,7 @@ function App() {
     );
   }
 
-  if (!authChecked) return <div className="auth-screen"><div className="auth-card"><div className="brand-mark"><BrainCircuit size={24}/></div><h1>ContinuityAI</h1><p>{error || "Connecting to your project workspace…"}</p>{error && <><p className="brand-disclaimer">The API did not respond in time. It may be waking up or unavailable.</p><button type="button" className="primary-button" onClick={() => window.location.reload()}>Retry connection</button></>}</div></div>;
+  if (!authChecked || (error && !authToken && !sharedHandover)) return <div className="auth-screen"><div className="auth-card"><div className="brand-mark"><BrainCircuit size={24}/></div><h1>ContinuityAI</h1><p>{error || "Connecting to your project workspace…"}</p>{error && <><p className="brand-disclaimer">The API did not respond in time. It may be waking up or unavailable.</p><button type="button" className="primary-button" onClick={() => window.location.reload()}>Retry connection</button></>}</div></div>;
   if (authEnabled && !authToken) return (
     <div className="auth-screen">
       <section className="auth-card">
