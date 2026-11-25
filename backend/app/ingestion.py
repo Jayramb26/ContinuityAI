@@ -13,8 +13,27 @@ def extract_text(filename: str, data: bytes) -> str:
         text = "\n".join(page.get_text("text") for page in doc)
     elif ext == ".docx":
         import io
+        from docx.table import Table
+        from docx.text.paragraph import Paragraph
+
         doc = Document(io.BytesIO(data))
-        text = "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+        parts = []
+        # Iterate top-level paragraphs and tables in document order so content
+        # stored in meeting-note/action tables is not silently discarded.
+        for block in doc.iter_inner_content():
+            if isinstance(block, Paragraph):
+                value = block.text.strip()
+                if value:
+                    parts.append(value)
+            elif isinstance(block, Table):
+                for row in block.rows:
+                    cells = [
+                        " / ".join(part.strip() for part in cell.text.splitlines() if part.strip())
+                        for cell in row.cells
+                    ]
+                    if any(cells):
+                        parts.append(" | ".join(cells))
+        text = "\n".join(parts)
     else:
         text = data.decode("utf-8", errors="replace")
     if not text.strip():
