@@ -91,6 +91,14 @@ def test_pdf_and_docx_ingestion(client):
     docx = Document()
     for line in source.splitlines():
         docx.add_paragraph(line)
+
+    # Meeting notes often store decisions and actions in Word tables.
+    table = docx.add_table(rows=2, cols=2)
+    table.cell(0, 0).text = "Decision"
+    table.cell(0, 1).text = "Use PostgreSQL for durable project storage."
+    table.cell(1, 0).text = "Task"
+    table.cell(1, 1).text = "Assigned to Mira, complete database migration by 2026-11-25."
+
     docx_buffer = BytesIO()
     docx.save(docx_buffer)
 
@@ -119,6 +127,8 @@ def test_pdf_and_docx_ingestion(client):
     }
     assert len(project["items"]) >= 6
     assert all(item["evidence"] for item in project["items"])
+    assert any("PostgreSQL" in item["evidence"] for item in project["items"])
+    assert any(item["owner"] == "Mira" and item["due_date"] == "2026-11-25" for item in project["items"])
 
 
 def test_rejects_unsupported_file_type(client):
